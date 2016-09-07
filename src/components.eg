@@ -1,0 +1,335 @@
+
+require:
+   earl-react as React
+   /browser -> document
+   /dom
+   .master ->
+      Dispatcher
+   .source ->
+      StreamSource
+      StaticSource
+   .messages ->
+      transform-message
+      merge-messages
+      add-message
+      add-messages
+   merge
+   .utilities ->
+      compute-level
+      get-channel
+      get-network
+   lodash
+   .renderers ->
+      message-renderers
+   md5
+   color as Color
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   setup
+
+globals:
+   alert
+
+
+StandardComponent = {
+   method component-will-mount() =
+      @__events = Object.assign(Object.create(null), @events())
+      items(@__events) each {ev, fn} ->
+         @props.master.on(ev, fn)
+   method component-will-unmount() =
+      items(@__events) each {ev, fn} ->
+         @props.master.remove-listener(ev, fn)
+}
+
+
+component TabLabel:
+   mixins = {StandardComponent}
+   get-initial-state() = {
+      selected = @props.master.active
+      label = @props.master.label()
+   }
+   events() = {
+      set-active(state) =
+         @set-state with {selected = state}
+      set-label(label) =
+         @set-state with {label = label}
+
+      ;; select-tab(name) =
+      ;;    @set-state with {selected = @props.label === name}
+
+      ;; m_nick(channel, msg) =
+      ;;    if get-channel(@state.label) === msg.from
+      ;;       \ and get-network(channel) === get-network(@state.label):
+      ;;       @set-state with {
+      ;;          label = {get-network(channel), msg.to}.join("/")
+      ;;       }
+
+   }
+   render() =
+      parts = @state.label.split("/") each x when x -> x
+      .tab-label %
+         class-name = if{@state.selected, .selected, ""}
+         parts[parts.length - 1]
+         on-click() =
+            if not @state.selected:
+               @props.master.master.activate(@props.master)
+               ;; @props.master.select-tab(@state.label)
+
+component Message:
+   colorize-name(s) =
+      hash = md5(s)
+      hue = parse-int(hash[0...2], 16)
+      sat = parse-int(hash[2...4], 16)
+      val = parse-int(hash[4...6], 16)
+      color = Color().hsv with
+         360 * hue/255
+         80 + (20 * sat/255)
+         60 + (30 * val/255)
+      span %
+         style = {color = color.rgbString(), font-weight = .bold}
+         s
+   show-message(agent, content, extra-class = "") =
+      .message %
+         class-name = extra-class
+         .message-source % @colorize-name(agent)
+         .message-content % content
+   status-message(content) =
+      .message %
+         .message-source % ""
+         .message-status % content
+   render() =
+      r = message-renderers[@props.message.type]
+          \ or message-renderers._unhandled
+      try:
+         r.call(@, @props.message) or (span % "")
+      catch e:
+         .message %
+            .message-source % "!RERROR!"
+            .message-content % e.message
+
+
+component Interactor:
+   mixins = {StandardComponent}
+   get-initial-state() = {
+      text = ""
+      nickname = @props.master.active-nickname()
+   }
+   events() = {
+      change-nickname(*) =
+         @set-state with {
+            nickname = @props.master.active-nickname()
+         }
+   }
+   render() =
+      .interact %
+         span.own-nickname %
+            @state.nickname
+         form %
+            on-submit(e) =
+               e.prevent-default()
+               match @state.text:
+                  R"^/([^ ]+) ?(.*)"! {_, cmd, arg} ->
+                     @props.master.send with {
+                        command = cmd
+                        argument = arg
+                     }
+                  text ->
+                     @props.master.send with {
+                        command = .message
+                        argument = text
+                     }
+               @set-state with {text = ""}
+            input.chat-input %
+               value = @state.text
+               on-change(e) =
+                  @set-state with {text = e.target.value}
+
+
+component Tab:
+   mixins = {StandardComponent}
+   get-initial-state() = {
+      active = false
+      ;; label = @props.channels[0]
+      ;; channels = new Set(@props.channels or {})
+      ;; active = @props.active
+      messages = @props.master.messages
+      ;; messages = add-messages({}) with (@props.initial-messages or {}) each m ->
+      ;;    transform-message.call(@, m)
+   }
+   events() = {
+      set-active(state) =
+         @set-state with {active = state}
+
+      add-message(m) =
+         @set-state with {
+            messages = @state.messages ++ {m}
+         }
+      
+      delete-message(m) =
+         @set-state with {
+            messages = @state.messages each m2 when m !== m2 -> m2
+         }
+
+      ;; select-tab(name) =
+      ;;    @set-state with {active = @props.label === name}
+
+      ;; ;; m_nick(channel, msg) =
+      ;; ;;    if get-channel(@state.label) === msg.from
+      ;; ;;       \ and get-network(channel) === get-network(@state.label):
+      ;; ;;       @set-state with {
+      ;; ;;          label = {get-network(channel), msg.to}.join("/")
+      ;; ;;          channels = new Set({channel})
+      ;; ;;       }
+
+      ;; m_raw(channel, msg) =
+      ;;    if msg.type === .notice and @state.active:
+      ;;       @set-state with {
+      ;;          messages = add-message(@state.messages) with
+      ;;             transform-message.call(@, msg)
+      ;;       }
+      ;;    elif @state.channels.has(channel):
+      ;;       @set-state with {
+      ;;          messages = add-message(@state.messages) with
+      ;;             transform-message.call(@, msg)
+      ;;       }
+
+      ;; error(channel, msg, error) =
+      ;;    if @state.channels.has(channel):
+      ;;       @set-state with {
+      ;;          messages = @state.messages ++ {err} where err = {
+      ;;             type = .error
+      ;;             message = msg
+      ;;             error = error
+      ;;          }
+      ;;       }
+   }
+
+   render() =
+      .tab-window %
+         class-name = if{@state.active, .active, ""}
+         .messages %
+            @state.messages each m ->
+               Message %
+                  key = m.message-id
+                  master = @props.master
+                  message = m
+         Users %
+            master = @props.master
+            ;; channels = @state.channels
+         Interactor %
+            master = @props.master
+
+
+component Users:
+   mixins = {StandardComponent}
+   get-initial-state() = {
+      users = @props.master.users
+   }
+   events() = {
+      update-user(*) =
+         @set-state with {
+            users = merge.clone(@props.master.users)
+         }
+      remove-user(*) =
+         @set-state with {
+            users = merge.clone(@props.master.users)
+         }
+      ;; users-changed(channel, users) =
+      ;;    if @props.channels.has(channel):
+      ;;       @set-state with {
+      ;;          users = merge.clone(users)
+      ;;       }
+   }
+   render() =
+      .users %
+         items(@state.users) each {channel, users} ->
+            items(users) each {nickname, data} ->
+               l = compute-level(data.modes)
+               span.user-name %
+                  class-name = 'user-level-{l}'
+                  nickname
+               ;; .user %
+               ;;    .user-status %
+               ;;       ;; " +%@&~"[compute-level(data.modes)] or "?"
+               ;;    .user-name %
+               ;;       nickname
+         ;; items(@state.users) each {nickname, data} ->
+         ;;    .user %
+         ;;       .user-status %
+         ;;          consume(data.modes or {}).join("")
+         ;;       .user-name %
+         ;;          nickname
+
+
+component ChatApp:
+   mixins = {StandardComponent}
+   get-initial-state() = {
+      tabs = {}
+   }
+   events() = {
+      add-view(view) =
+         is-first = @state.tabs.length === 0
+         new-tab = {
+            view = view
+            label =
+               TabLabel %
+                  master = view
+            contents =
+               Tab %
+                  master = view
+         }
+         @set-state with {tabs = @state.tabs ++ {new-tab}}
+         if is-first:
+            @props.master.activate(view)
+
+      remove-view(view) =
+         @set-state with {
+            tabs = @state.tabs each tab when tab.view !== view -> tab
+         }
+
+      ;; m_raw(channel, msg) =
+      ;;    ;; elif @state.tabs.every(x -> not x.contents.state.channels.has(channel)):
+      ;;    if msg.type === .notice:
+      ;;       pass
+      ;;    elif @state.tabs.every(x -> not x.label.props.label === channel):
+      ;;       is-first = @state.tabs.length === 0
+      ;;       @set-state with {
+      ;;          tabs = @state.tabs ++ {
+      ;;             {
+      ;;                label =
+      ;;                   TabLabel %
+      ;;                      master = @props.master
+      ;;                      label = channel
+      ;;                      selected = is-first
+      ;;                contents =
+      ;;                   Tab %
+      ;;                      master = @props.master
+      ;;                      initial-messages = {msg}
+      ;;                      label = channel
+      ;;                      channels = {channel}
+      ;;                      active = is-first
+      ;;             }
+      ;;          }
+      ;;       }
+   }
+   render() =
+      .main-window %
+         .tab-labels %
+            @state.tabs each {=> label} -> label
+         .tab-area %
+            @state.tabs each {=> contents} -> contents
+
+
+setup(options) =
+   src = match options:
+      {=> messages} -> StaticSource(options.messages)
+      {=> stream} -> StreamSource(stream.[in], stream.out)
+   let master = Dispatcher(src)
+   React.render(a, options.mount) where a =
+      ChatApp %
+         master = master
+   master.run()

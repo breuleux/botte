@@ -1,0 +1,60 @@
+
+require:
+   events -> EventEmitter
+
+provide:
+   StreamSource
+   StaticSource
+
+
+class StreamSource:
+
+   constructor(@in-stream, @out-stream) =
+      @index = 0
+      @messages = {}
+      @ee = new EventEmitter()
+      @current-chunk = ""
+      @in-stream.set-encoding??(.utf8)
+      @in-stream.on(.data) with chunks ->
+         if chunks:
+            ;; TODO: better regular expression
+            chunks.split(R"(?=\{)|(\})") each chunk when chunk ->
+               @process-chunk(chunk)
+      @in-stream.on(.end) with ->
+         @ee.emit(@messages.length, null)
+
+   process-chunk(chunk) =
+      @current-chunk += chunk
+      try:
+         result = JSON.parse(@current-chunk)
+         @messages.push(result)
+         @current-chunk = ""
+         @ee.emit(@messages.length - 1, result)
+      catch SyntaxError? e:
+         pass
+
+   send(message) =
+      @out-stream.write(JSON.stringify(message))
+      ;; @messages.push(message)
+      ;; @ee.emit(@messages.length - 1, message)
+
+   async next() =
+      index = @index
+      @index += 1
+      match @messages[index]:
+         undefined? ->
+            new Promise with {resolve, reject} ->
+               @ee.once(index) with result -> resolve(result)
+         x -> x
+
+
+
+class StaticSource:
+   constructor(@messages) =
+      @index = -1
+   send(message) =
+      @messages.push(message)
+   async next() =
+      @index += 1
+      @messages[@index]
+

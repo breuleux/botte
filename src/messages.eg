@@ -1,0 +1,144 @@
+
+require:
+   node-uuid as uuid
+   .utilities ->
+      is-channel
+
+provide:
+   message-transformers
+   message-mergers
+   transform-message
+   merge-messages
+   add-message
+   add-messages
+
+class Action:
+   constructor(entry) =
+      @action = entry
+
+
+
+method make-traffic(nickname, entry, m) =
+   orig-name = m.from or nickname
+   data = match (@users[m.channel] or {=})[nickname]:
+      false? ->
+         {modes = new Set()
+          present = false
+          nickname = orig-name}
+      d ->
+         {modes = new Set(consume(d.modes))
+          present = true
+          nickname = orig-name}
+   {
+      type = .traffic
+      changes = {
+         nickname => {entry}
+      }
+      initial = {
+         nickname => data
+      }
+   }
+
+
+message-transformers = Object.assign(Object.create(null)) with {
+
+   method add-mode(m) =
+      if R"[vhoaq]"? m.mode:
+         make-traffic.call(@, m.argument, #add-mode{m.mode}, m)
+
+   method remove-mode(m) =
+      if R"[vhoaq]"? m.mode:
+         make-traffic.call(@, m.argument, #remove-mode{m.mode}, m)
+
+   method join(m) =
+      make-traffic.call(@, m.agent, #join{}, m)
+
+   method part(m) =
+      make-traffic.call(@, m.agent, #part{}, m)
+
+   method quit(m) =
+      make-traffic.call(@, m.agent, #quit{}, m)
+
+   method kick(m) =
+      make-traffic.call(@, m.kicked, #kick{}, m)
+
+   method nick(m) =
+      make-traffic.call(@, m.to, #nick{m.from, m.to}, m)
+
+   method _other(m) =
+      m
+
+}
+
+method transform-message(m) =
+   loopy(m) =
+      fn = message-transformers[m.type] or message-transformers._other
+      m2 = fn.call(@, m)
+      if not m2 or m === m2:
+         m
+      else:
+         loopy(m2)
+   result = loopy(m)
+   {.time, .channel} each field ->
+      result[field] = m[field]
+   result.message-id = uuid()
+   result
+
+
+
+message-mergers = Object.assign(Object.create(null)) with {
+
+   method traffic(m1, m2) =
+      key-switches = {=}
+      items(m2.changes) each
+         {k, {#nick{from, to}, *}} ->
+            key-switches[from] = to
+         else ->
+            continue
+      changes = object with items(m1.changes) each {k, v} ->
+         {key-switches[k] or k, v}
+      items(m2.changes) each {k, v} ->
+         changes[k] or= {}
+         changes[k] ++= v
+
+      initial = object with items(m1.initial) each {k, v} ->
+         {key-switches[k] or k, v}
+
+      {
+         type = .traffic
+         changes = changes
+         initial = m2.initial & initial
+      }
+
+   method _other(m1, m2) =
+      null
+}
+
+method merge-messages(m1, m2) =
+   if m1.type !== m2.type:
+      return {m1, m2}
+   fn = message-mergers[m1.type] or message-mergers._other
+   m3 = fn.call(@, m1, m2)
+   if not m3:
+      {m1, m2}
+   else:
+      m3.message-id = uuid()
+      m3.time = m2.time
+      {m3}
+
+method add-message(messages, m) =
+   ml = messages.length
+   if ml > 0:
+      last = messages[ml - 1]
+      match merge-messages(last, m):
+         {_, _} ->
+            messages ++ {m}
+         {nm} ->
+            add-message(messages.slice(0, ml - 1), nm)
+   else:
+      messages ++ {m}
+
+method add-messages(var messages, ms) =
+   ms each m ->
+      messages = add-message(messages, m)
+   messages

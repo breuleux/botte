@@ -1,0 +1,4 @@
+#!/bin/sh
+
+node_modules/.bin/node-sass css/style.sass -o css && node_modules/.bin/electron lib/index.js "$@"
+

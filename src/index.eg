@@ -1,0 +1,67 @@
+
+require:
+   electron ->
+      app, BrowserWindow, ipc-main
+   fs
+   path
+   commander
+   child_process ->
+      spawn
+
+var main-window = null
+
+
+create-window() =
+   options =
+      chain commander:
+        @version('0.0.1')
+        @option('-c, --command [command]', 'Command to execute.')
+        @option('--into [file]', 'File to log the command\'s stdout to.')
+        @parse(process.argv)
+
+   w = new BrowserWindow with {
+      width = 800
+      height = 800
+      web-preferences = {
+         experimental-features = true
+      }
+   }
+
+   w.loadURL('file://{__dirname}/../html/index.html')
+   w.web-contents.open-dev-tools()
+   w.on(.closed) with {} ->
+      main-window = null
+
+   ipc-main.on(.ready) with ->
+      cmd =
+         if options.into:
+            '{options.command} | tee {options.into}'
+         else:
+            options.command
+      print 'Using command: {cmd}'
+      proc = spawn(cmd, {}) with {
+         shell = true
+         stdio = {.pipe, .pipe, process.stderr}
+      }
+      proc.on(.error) with err ->
+         print 'Failed to start process.'
+         print err
+      proc.stdout.set-encoding(.utf8)
+      proc.stdout.on(.data) with data ->
+         w.web-contents.send(.data, data)
+      proc.stdout.on(.end) with -> ->
+         w.web-contents.send(.end)
+      ipc-main.on(.data) with {_, data} ->
+         proc.stdin.write(data)
+
+app.on('ready', create-window)
+
+app.on("window-all-closed") with {} ->
+   if process.platform !== .darwin:
+      app.quit{}
+
+app.on(.activate) with {} ->
+   if main-window === null:
+      create-window()
+
+

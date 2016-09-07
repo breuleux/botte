@@ -1,0 +1,247 @@
+
+require:
+   irc
+   moment
+   .source ->
+      StreamSource
+   .utilities ->
+      get-channel
+
+events = {
+
+   method registered(m) = {
+      type = .nick
+      channel = ""
+      from = null
+      to = m.args[0]
+   }
+
+   method motd(text) = {
+      type = .motd
+      channel = ""
+      content = text
+   }
+
+   method names(channel, nicks) = {
+      type = .names
+      = channel
+      content = object with items(nicks) each {nick, level} ->
+         {nick, {operator-level = level}}
+   }
+
+   method topic(channel, topic, agent, message) = {
+      type = .topic
+      = channel, = agent
+      content = topic
+   }
+
+   method join(channel, agent, m) = {
+      type = .join
+      = channel, = agent
+      self = agent === @client.nick
+   }
+
+   method part(channel, agent, m) = {
+      type = .part
+      = channel, = agent
+      self = agent === @client.nick
+   }
+
+   method quit(agent, reason, channels, m) =
+      channels each channel -> {
+         type = .quit
+         = channel, = agent
+         content = reason
+      }
+
+   method kick(channel, nick, agent, reason, m) = {
+      type = .kick
+      = channel, = agent
+      kicked = nick
+      content = reason
+   }
+
+   method kill(agent, reason, channels, m) =
+      channels each channel -> {
+         type = .kill
+         = channel, = agent
+         content = reason
+      }
+
+   method message(agent, channel, text, _) =
+      m = @fudge with {
+         type = .message
+         = channel, = agent
+         content = text
+      }
+      if m.channel === m.agent and not @pms.has(m.agent):
+         @pms.add(m.agent)
+         j = {
+            type = .join
+            channel = m.agent
+            agent = @client.nick
+            self = true
+         }
+         n = {
+            type = .names
+            channel = m.agent
+            content = {
+               m.agent => {operator-level = ""}
+               @client.nick => {operator-level = ""}
+            }
+         }
+         {j, n, m}
+      else:
+         m
+
+   ;; method selfMessage(*args) =
+   ;;    @unhandled('selfMessage', args)
+
+   method notice(agent, channel, text, m) = @fudge with {
+      type = .notice
+      = channel, = agent
+      content = text
+   }
+
+   ;; method ping(*args) =
+   ;;    @unhandled('ping', args)
+
+   ;; method pm(*args) =
+   ;;    @unhandled('pm', args)
+
+   method ctcp(*args) =
+      @unhandled('ctcp', args)
+
+   method ctcp-notice(*args) =
+      @unhandled('ctcp-notice', args)
+
+   method ctcp-privmsg(*args) =
+      @unhandled('ctcp-privmsg', args)
+
+   method ctcp-version(*args) =
+      @unhandled('ctcp-version', args)
+
+   method nick(oldnick, newnick, channels, m) =
+      if not oldnick or oldnick === @nickname:
+         @nickname = newnick
+      (channels ++ {oldnick}) each channel -> {
+         type = .nick
+         = channel
+         from = oldnick
+         to = newnick
+      }
+
+   method invite(*args) =
+      @unhandled('invite', args)
+
+   method "+mode"(channel, by, mode, argument, m) = {
+      type = .add-mode
+      = channel, agent = by
+      = mode
+      = argument
+   }
+
+   method "-mode"(channel, by, mode, argument, m) = {
+      type = .remove-mode
+      = channel, agent = by
+      = mode
+      = argument
+   }
+
+   method whois(*args) =
+      @unhandled('whois', args)
+
+   method channellist_start(*args) =
+      @unhandled('channellist_start', args)
+
+   method channellist_item(*args) =
+      @unhandled('channellist_item', args)
+
+   method channellist(*args) =
+      @unhandled('channellist', args)
+
+   method raw(*args) =
+      pass
+
+   method error(*args) =
+      @unhandled('error', args)
+
+   method action(*args) =
+      @unhandled('action', args)
+}
+
+
+class IRCClient:
+
+   constructor(@network, in-stream, @nickname) =
+      @in-stream = StreamSource(in-stream, null)
+      @network-prefix = 'irc://{@network}'
+      @client = new irc.Client(@network, @nickname) with {
+         channels = {'#braintest'}
+      }
+      @pms = new Set()
+      @install-handlers()
+
+   fudge(m) =
+      if not m.agent:
+         m.agent = m.channel
+         m.channel = ""
+      if m.channel === @nickname:
+         m.channel = m.agent
+      m
+
+   augment(message) =
+      message.channel = '{@network-prefix}/{ch.replace(R.g"/", "\\/")}' where
+         ch = message.channel or ""
+      message.format = "irc"
+      message.time = moment().format("YYYY-MM-DD hh:mm:ss")
+      message
+
+   unhandled(m, args) =
+      {
+         type = .unhandled
+         channel = m.channel or ""
+         message-type = m
+         content = args
+      }
+
+   print-result(result) =
+      if result:
+         (Array! result) each entry ->
+            print JSON.stringify(@augment(entry), null, 2)
+
+   install-handlers() =
+      items(events) each {k, fn} ->
+         @client.add-listener(k) with {*args} ->
+            @print-result(fn.call(@, *args))
+
+   async run() =
+      while true:
+         message = await @in-stream.next()
+         result = @process-command(message.command, message)
+         @print-result(result)
+
+   process-command(match command, m) =
+      do:
+         channel = get-channel(m.channel)
+      .message ->
+         @client.say(channel, m.argument)
+         @fudge with {
+            type = .message
+            channel = channel
+            agent = @client.nick
+            content = m.argument
+         }
+      else ->
+         @fudge with {
+            type = .unknown-command
+            channel = channel
+            command = command
+            argument = m.argument
+         }
+
+
+main() where async main() =
+   client = IRCClient('irc.synirc.net', process.stdin, 'Dingaling')
+   client.run()
+

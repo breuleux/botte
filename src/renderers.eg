@@ -1,0 +1,117 @@
+
+require:
+   .utilities ->
+      compute-level
+      get-network
+   lodash
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   message-renderers
+
+message-renderers = Object.assign(Object.create(null)) with {
+   method message(m) =
+      @show-message(m.agent, m.content)
+
+   method traffic(m) =
+      .message %
+         .message-source % ""
+         .message-traffic %
+            items(m.changes) each {nick, changes} ->
+               initial = m.initial[nick]
+               state = {
+                  modes = new Set(initial.modes)
+                  present = initial.present
+                  movement = {}
+                  nick-sequence = {
+                     {initial.nickname, compute-level(initial.modes)}
+                  }
+               }
+               changes each
+                  #join{} ->
+                     state.present = true
+                     state.movement.push with
+                        span.user-join % "▲"
+                  #part{} or #quit{} ->
+                     state.present = false
+                     state.modes = new Set()
+                     state.movement.push with
+                        span.user-part % "▼"
+                  #kick{} ->
+                     state.present = false
+                     state.modes = new Set()
+                     state.movement.push with
+                        span.user-part % "✖"
+                  #nick{old, new} ->
+                     state.nick-sequence.push with
+                        {new, compute-level(state.modes)}
+                  #add-mode{mode} ->
+                     state.modes.add(mode)
+                  #remove-mode{mode} ->
+                     state.modes.delete(mode)
+                  else ->
+                     pass
+               if state.nick-sequence.length === 1
+                  \ and compute-level(state.modes)
+                      \ != compute-level(initial.modes):
+                     state.nick-sequence.push with
+                        {initial.nickname, compute-level(state.modes)}
+               state.nick-sequence[state.nick-sequence.length - 1][1] =
+                  compute-level(state.modes)
+               if state.movement.length > 0 or state.nick-sequence.length > 1:
+                  span %
+                     span.user-movement %
+                        state.movement
+                     span %
+                        class-name = match state:
+                           {movement => {}} ->
+                              "user-static"
+                           {present => match} ->
+                              true? -> "user-joined"
+                              false? -> "user-left"
+                        state.nick-sequence each {n, l} ->
+                           span.user-nickname %
+                              class-name = 'user-level-{l}'
+                              n
+               else:
+                  span % ""
+
+   method topic(m) =
+      if m.content:
+         .channel-topic %
+            .channel-topic-content % m.content
+            .channel-topic-set-by % m.agent
+
+   method add-mode(m) =
+      ag = m.agent or get-network(m.channel) or "??"
+      @status-message('{ag} sets mode +{m.mode} {m.argument or ""}')
+
+   method remove-mode(m) =
+      ag = m.agent or get-network(m.channel) or "??"
+      @status-message('{ag} sets mode -{m.mode} {m.argument or ""}')
+
+   method names(m) =
+      null
+
+   method notice(m) =
+      @show-message(m.agent, m.content, .notice)
+
+   method motd(m) =
+      @show-message(m.agent, m.content)
+
+   method error(m) =
+      print m.error
+      .message.unhandled %
+         .message-source.unhandled % "!ERROR!"
+         .message-content %
+            div % m.error.message
+            div % JSON.stringify(m.message, null, 2)
+
+   method _unhandled(m) =
+      .message.unhandled %
+         .message-source.unhandled % "!UNHANDLED!"
+         .message-content % JSON.stringify(@props.message, null, 2)
+}

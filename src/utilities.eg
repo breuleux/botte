@@ -1,0 +1,65 @@
+
+require:
+   lodash
+
+provide:
+   is-channel
+   compute-level
+   get-channel
+   get-network
+
+
+get-network(channel) =
+   channel.split("/")[... -1].join("/")
+
+get-channel(channel) =
+   parts = channel.split("/")
+   parts[parts.length - 1]
+
+is-channel(channel) =
+   channel.match(R"^[#&~!]")
+
+compute-level(modes) =
+   m = lodash.max with modes each
+      "q" -> 5
+      "a" -> 4
+      "o" -> 3
+      "h" -> 2
+      "v" -> 1
+      else -> 0
+   m or 0
+
+space-mapping = {
+   "0" => "\u2001"
+   "1" => "\u2002"
+   "2" => "\u2003"
+   "3" => "\u2004"
+   "4" => "\u2005"
+   "5" => "\u2006"
+   "6" => "\u2007"
+   "7" => "\u2008"
+   "8" => "\u2009"
+   "9" => "\u200A"
+   "A" => "\u200B"
+   "B" => "\u200C"
+   "C" => "\u200D"
+   "D" => "\u202F"
+   "E" => "\u205F"
+   "F" => "\u3000"
+}
+
+reverse-space-mapping = object with
+   items(space-mapping) each {k, v} -> {v, k}
+
+space-code(s) =
+   (s.to-upper-case() each c -> space-mapping[c] or "?").join("")
+
+parse-space-code(s) =
+   var result = ""
+   s each c ->
+      c2 = reverse-space-mapping[c]
+      if c2 === undefined:
+         return false
+      result += c2
+   result
+
