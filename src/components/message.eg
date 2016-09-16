@@ -1,0 +1,173 @@
+
+require:
+   react-dom as ReactDOM
+   color-space -> lchab
+   md5
+   moment
+   .mixins ->
+      MasterEvents
+   ..utilities ->
+      shorten
+      SortedArray
+   .links ->
+      expand-links
+   ..renderers ->
+      message-renderers
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   Message, Messages
+
+color-cache = {=}
+
+component Message:
+   colorize-name(s) =
+      color =
+         if color-cache[s] as cached:
+            cached
+         else:
+            hash = md5(s)
+            lig = 50
+            sat = 100
+            hue = 360 * parse-int(hash[0...2], 16)/256
+            c = lchab.rgb({lig, sat, hue}) each v -> Math.floor(v)
+            colstring = 'rgb({c[0]}, {c[1]}, {c[2]})'
+            color-cache[s] = colstring
+            colstring
+      span %
+         style = {color = color, font-weight = .bold}
+         s
+   show-message(channel, agent, content, extra-class = "") =
+      .message %
+         class-name = extra-class
+         .message-channel % shorten(channel)
+         .message-source % if{@props.active, @colorize-name(agent), agent}
+         .message-content %
+            match content:
+               String? -> expand-links(content)
+               else -> content
+   status-message(channel, content) =
+      .message %
+         .message-channel % shorten(channel)
+         .message-source % ""
+         .message-status % content
+   render() =
+      r = message-renderers[@props.message.type]
+          \ or message-renderers._unhandled
+      try:
+         r.call(@, @props.message) or (span % "")
+      catch e:
+         .message.error %
+            .message-source.error % "!RERROR!"
+            .message-content %
+               div % e.message
+               div % JSON.stringify(@props.message, true, 2)
+
+
+
+component Messages:
+   mixins = {MasterEvents}
+
+   get-initial-state() = {
+      messages = @populate(@props.master.messages)
+      active-channel = @props.master.active-channel
+      now = moment()
+   }
+
+   populate(messages) =
+      s = SortedArray(___, false) with m -> m.start-time + " " + m.seq-id
+      s.populate(messages)
+
+   component-will-update() =
+      node = ReactDOM.findDOMNode(@)
+      @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight
+
+   component-did-update() =
+      if @at-bottom:
+         node = ReactDOM.findDOMNode(@)
+         node.scrollTop = node.scrollHeight
+
+   events() = {
+      ;; tick() =
+      ;;    @set-state with {
+      ;;       now = moment()
+      ;;    }
+
+      set-active-channel(ch) =
+         @set-state with {
+            active-channel = ch
+         }
+
+      add-message(m) =
+         @set-state with {
+            messages = @state.messages.add(m)
+         }
+      
+      delete-message(m) =
+         @set-state with {
+            messages = @state.messages.delete(m)
+         }
+
+      error(channel, msg, error) =
+         @set-state with {
+            messages = @state.messages ++ {err} where err = {
+               type = .error
+               message = msg
+               error = error
+            }
+         }
+   }
+   render() =
+      var prev = null
+      .messages %
+         @state.messages each m ->
+            active = m.channel === @props.master.active-channel
+            result =
+               div %
+                  className = if{active, "active-message", "inactive-message"}
+                  ;; if prev and false:
+                  ;;    Intercalary %
+                  ;;       threshold = 5
+                  ;;       message1 = prev
+                  ;;       message2 = m
+                  Message %
+                     key = m.message-id
+                     active = active
+                     master = @props.master
+                     message = m
+            prev = m
+            result
+         ;; if prev and false:
+         ;;    Intercalary %
+         ;;       threshold = 5
+         ;;       message1 = prev
+         ;;       message2 = {time = @state.now}
+
+      ;; var prev = null
+      ;; .messages %
+      ;;    @state.messages each m ->
+      ;;       curr = mom(m.time)
+      ;;       diff = if{prev, Math.abs(prev.diff(curr)), 0}
+      ;;       prev = curr
+      ;;       result = Message %
+      ;;          key = m.message-id
+      ;;          master = @props.master
+      ;;          message = m
+      ;;       if diff > 5000:
+      ;;          div %
+      ;;             .inactivity-period %
+      ;;                String{'{diff // 1000} seconds of inactivity'}
+      ;;             result
+      ;;       else:
+      ;;          result
+      ;;    do:
+      ;;       diff = Math.abs(prev.diff(moment()))
+      ;;       if diff > 5000:
+      ;;          .inactivity-period %
+      ;;             String{'{diff // 1000} seconds of inactivity'}
+      ;;       else:
+      ;;          ""
+

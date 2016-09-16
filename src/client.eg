@@ -7,7 +7,7 @@ require:
    electron -> ipc-renderer
    /browser -> document
    /dom
-   .components ->
+   .components/app ->
       ChatApp
    .source ->
       StreamSource

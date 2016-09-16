@@ -1,0 +1,48 @@
+
+require:
+   ..utilities ->
+      mom
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   Intercalary
+
+
+component Intercalary:
+   render() =
+      m1 = @props.message1
+      m2 = @props.message2
+      t1 = mom(m1.end-time or m1.time)
+      t2 = mom(m2.start-time or m2.time)
+      seconds = t2.diff(t1) // 1000
+      if seconds > @props.threshold:
+         minutes = seconds // 60
+         hours = minutes // 60
+         days = hours // 24   
+         text =
+            if seconds == 1:
+               "1 second"
+            elif seconds < 60:
+               '{seconds} seconds'
+            elif minutes < 2:
+               '1 minute and {seconds mod 60} seconds'
+            elif minutes < 60:
+               '{minutes} minutes'
+            elif hours < 2:
+               '1 hour and {minutes mod 60} minutes'
+            elif hours < 24:
+               '{hours} hours'
+            elif days < 2:
+               '1 day and {hours mod 24} hours'
+            else:
+               '{days} days'
+         .message %
+            .message-channel % ""
+            .message-source % ""
+            .elapsed-time %
+               text
+      else:
+         span % ""

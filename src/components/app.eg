@@ -1,0 +1,50 @@
+
+require:
+   .mixins -> MasterEvents
+   .channels ->
+      ChannelGroup
+   .tab ->
+      Tab
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   ChatApp
+
+
+component ChatApp:
+   mixins = {MasterEvents}
+   get-initial-state() = {
+      tabs = @props.master.views each view -> @make-tab(view)
+   }
+   make-tab(view) = {
+      view = view
+      label =
+         ChannelGroup %
+            master = view
+      contents =
+         Tab %
+            master = view
+   }
+   events() = {
+      add-view(view) =
+         is-first = @state.tabs.length === 0
+         new-tab = @make-tab(view)
+         @set-state with {tabs = @state.tabs ++ {new-tab}}
+         if is-first:
+            @props.master.activate(view)
+
+      remove-view(view) =
+         @set-state with {
+            tabs = @state.tabs each tab when tab.view !== view -> tab
+         }
+   }
+
+   render() =
+      .main-window %
+         .tab-labels %
+            @state.tabs each {=> label} -> label
+         .tab-area %
+            @state.tabs each {=> contents} -> contents

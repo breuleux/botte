@@ -1,0 +1,36 @@
+
+require:
+   .mixins -> MasterEvents
+   .message ->
+      Messages
+   .user ->
+      Users
+   .input ->
+      Input
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   Tab
+
+
+component Tab:
+   mixins = {MasterEvents}
+   get-initial-state() = {
+      active = @props.master.active
+   }
+   events() = {
+      set-active(state) =
+         @set-state with {active = state}
+   }
+   render() =
+      .tab-window %
+         class-name = if{@state.active, .active, ""}
+         Messages %
+            master = @props.master
+         Users %
+            master = @props.master
+         Input %
+            master = @props.master

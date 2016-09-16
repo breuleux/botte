@@ -1,0 +1,66 @@
+
+require:
+   .mixins ->
+      MasterEvents
+   ..utilities ->
+      SortedArray
+      compute-level
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   User, Users
+
+
+component User:
+   render() =
+      l = compute-level(@props.data.modes)
+      span.user-name %
+         class-name = 'user-level-{l}'
+         @props.data.nickname
+
+
+component Users:
+   mixins = {MasterEvents}
+   compute-users(users) =
+      all-users = object with items(users) each {channel, _users} ->
+         s = SortedArray(___, false) with
+            u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
+         s.populate(items(_users) each {name, u} -> u)
+         {channel, s}
+      all-users
+   get-for-channel(channel) =
+      @state.users[channel] or=
+         SortedArray(___, false) with
+            u -> {0*compute-level(u.modes), u.nickname.to-lower.case()}
+   get-initial-state() = {
+      active-channel = @props.active-channel
+      users = @compute-users(@props.master.users)
+   }
+   events() = {
+      update-user(channel, u) =
+         @get-for-channel(channel).add(u)
+         @set-state with {
+            users = @state.users
+         }
+      remove-user(channel, u) =
+         @get-for-channel(channel).delete(u)
+         @set-state with {
+            users = @state.users
+         }
+      set-active-channel(channel) =
+         @set-state with {
+            active-channel = channel
+         }
+   }
+   render() =
+      .users %
+         (@state.users[@state.active-channel or ""] or {}) each data ->
+            User % data
+            ;; l = compute-level(data.modes)
+            ;; span.user-name %
+            ;;    class-name = 'user-level-{l}'
+            ;;    data.nickname
+
