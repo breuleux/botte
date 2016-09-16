@@ -1,38 +1,49 @@
 
 require:
    earl-react as React
+   react-dom as ReactDOM
    /browser -> document
    /dom
-   .master ->
-      Dispatcher
-   .source ->
-      StreamSource
-      StaticSource
-   .messages ->
-      transform-message
-      merge-messages
-      add-message
-      add-messages
+   ;; .messages ->
+   ;;    transform-message
+   ;;    merge-messages
+   ;;    add-message
+   ;;    add-messages
    merge
    .utilities ->
       compute-level
       get-channel
       get-network
+      mom
+      shorten
+      SortedArray
    lodash
    .renderers ->
       message-renderers
    md5
-   color as Color
+   color-space -> lchab
+   ;; node-uuid as uuid
+   moment
+   .components/links ->
+      expand-links
+   react-addons-pure-render-mixin as PureRender
+   .kb -> Interactor as ITOR
+   ;; .components/mixins ->
+   ;;    PureRender
+   ;;    MasterEvents as StandardComponent
 
 require-macros:
    earl-react ->
       %, component
 
 provide:
-   setup
+   ChatApp
 
 globals:
    alert
+
+
+color-cache = {=}
 
 
 StandardComponent = {
@@ -51,54 +62,84 @@ component TabLabel:
    get-initial-state() = {
       selected = @props.master.active
       label = @props.master.label()
+      channels = consume(@props.master.channels)
+      active-channel = @props.master.active-channel
+      talking = {=}
    }
    events() = {
       set-active(state) =
          @set-state with {selected = state}
+         if state:
+            @set-state with {talking = {=}, some-talking = false}
       set-label(label) =
          @set-state with {label = label}
-
-      ;; select-tab(name) =
-      ;;    @set-state with {selected = @props.label === name}
-
-      ;; m_nick(channel, msg) =
-      ;;    if get-channel(@state.label) === msg.from
-      ;;       \ and get-network(channel) === get-network(@state.label):
-      ;;       @set-state with {
-      ;;          label = {get-network(channel), msg.to}.join("/")
-      ;;       }
-
+      add-channel(channel) =
+         @set-state with {channels = consume(@props.master.channels)}
+      remove-channel(channel) =
+         @set-state with {channels = consume(@props.master.channels)}
+      set-active-channel(channel) =
+         @set-state with {active-channel = channel}
+      add-message(m) =
+         if not @state.selected and m.type === .message and not @state.talking[m.channel]:
+            @set-state with {talking = @state.talking & {m.channel => .talking}
+                             some-talking = .talking}
+            set-timeout(___, 1000) with _ ->
+               @set-state with {talking = @state.talking & {m.channel => .talked}
+                                some-talking = .talked}
    }
    render() =
-      parts = @state.label.split("/") each x when x -> x
-      .tab-label %
+      .tab-group %
          class-name = if{@state.selected, .selected, ""}
-         parts[parts.length - 1]
-         on-click() =
-            if not @state.selected:
-               @props.master.master.activate(@props.master)
-               ;; @props.master.select-tab(@state.label)
+         .tab-label %
+            class-name = if{@state.selected, .selected, ""}
+            .tab-label-activity %
+               class-name = @state.some-talking or 'not-talking'
+            shorten(@state.label)
+            on-click() =
+               if not @state.selected:
+                  @props.master.master.activate(@props.master)
+         @state.channels each
+            R"^/"? or (== @state.label) ->
+               continue
+            channel ->
+               .tab-channel %
+                  className = if{channel === @state.active-channel, .active, ""}
+                  .tab-channel-activity %
+                     class-name = @state.talking[channel] or 'not-talking'
+                  shorten(channel)
+                  on-click() =
+                     @props.master.master.activate(@props.master)
+                     @props.master.set-active-channel(channel)
 
 component Message:
    colorize-name(s) =
-      hash = md5(s)
-      hue = parse-int(hash[0...2], 16)
-      sat = parse-int(hash[2...4], 16)
-      val = parse-int(hash[4...6], 16)
-      color = Color().hsv with
-         360 * hue/255
-         80 + (20 * sat/255)
-         60 + (30 * val/255)
+      color =
+         if color-cache[s] as cached:
+            cached
+         else:
+            hash = md5(s)
+            lig = 50
+            sat = 100
+            hue = 360 * parse-int(hash[0...2], 16)/256
+            c = lchab.rgb({lig, sat, hue}) each v -> Math.floor(v)
+            colstring = 'rgb({c[0]}, {c[1]}, {c[2]})'
+            color-cache[s] = colstring
+            colstring
       span %
-         style = {color = color.rgbString(), font-weight = .bold}
+         style = {color = color, font-weight = .bold}
          s
-   show-message(agent, content, extra-class = "") =
+   show-message(channel, agent, content, extra-class = "") =
       .message %
          class-name = extra-class
-         .message-source % @colorize-name(agent)
-         .message-content % content
-   status-message(content) =
+         .message-channel % shorten(channel)
+         .message-source % if{@props.active, @colorize-name(agent), agent}
+         .message-content %
+            match content:
+               String? -> expand-links(content)
+               else -> content
+   status-message(channel, content) =
       .message %
+         .message-channel % shorten(channel)
          .message-source % ""
          .message-status % content
    render() =
@@ -107,24 +148,102 @@ component Message:
       try:
          r.call(@, @props.message) or (span % "")
       catch e:
-         .message %
-            .message-source % "!RERROR!"
-            .message-content % e.message
+         .message.error %
+            .message-source.error % "!RERROR!"
+            .message-content %
+               div % e.message
+               div % JSON.stringify(@props.message, true, 2)
 
 
 component Interactor:
    mixins = {StandardComponent}
    get-initial-state() = {
+      last-active = {=}
+      tab-cycle = null
+      cycle-index = 0
       text = ""
       nickname = @props.master.active-nickname()
    }
+
+   clear-cycle() =
+      @set-state with {tab-cycle = null, cycle-index = 0}
+
+   compute-cycle(cursor-position) =
+      to-cycle = @props.master.channels each ch when not ch.starts-with("/") -> ch
+      channels = lodash.sort-by(to-cycle) with
+         ch ->
+            if @props.master.active-channel === ch:
+               "9999"
+            else:
+               @state.last-active[ch] or "0000"
+      channels.reverse() each ch -> f where f() =
+         @props.master.set-active-channel(ch)
+
+   cycle(direction = 1) =
+      var idx = @state.cycle-index
+      var cyc = @state.tab-cycle
+      if not cyc:
+         cyc = @compute-cycle("")
+      next-idx = (idx + direction + cyc.length) mod cyc.length
+      cyc[next-idx]()
+      if next-idx === 0:
+         @clear-cycle()
+      else:
+         @set-state with {tab-cycle = cyc, cycle-index = next-idx}
+
+   cycle-group(match direction = 1) =
+      do:
+         _views = @props.master.master.views
+         views = neighbours(_views ++ _views[0...1])
+         @props.master.master.views
+      > 0 ->
+         views each
+            {x, y} when x === @props.master ->
+               @props.master.master.activate(y)
+               return
+      < 0 ->
+         views each
+            {x, y} when y === @props.master ->
+               @props.master.master.activate(x)
+               return
+
    events() = {
-      change-nickname(*) =
+      set-active-channel(channel) =
          @set-state with {
             nickname = @props.master.active-nickname()
          }
+      set-nickname(channel, name) =
+         @set-state with {
+            nickname = @props.master.active-nickname()
+         }
+      add-message(m) =
+         if m.type === .message:
+            @set-state with {
+               last-active = @state.last-active & {m.channel => m.time}
+            }
    }
+
    render() =
+      interactor = ITOR({=})
+      interactor.set-bindings with {
+         "Tab"() =
+            @cycle(1)
+         "S-Tab"() =
+            @cycle(-1)
+         "C-Tab"() =
+            @cycle-group(1)
+         "C-S-Tab"() =
+            @cycle-group(-1)
+         "Up"() =
+            print "up"
+         "Down"() =
+            print "down"
+         "S-Up"() =
+            print "Sup"
+         "S-Down"() =
+            print "Sdown"
+      }
+
       .interact %
          span.own-nickname %
             @state.nickname
@@ -139,149 +258,244 @@ component Interactor:
                      }
                   text ->
                      @props.master.send with {
-                        command = .message
+                        command = .say
                         argument = text
                      }
                @set-state with {text = ""}
             input.chat-input %
+               ref(elem) =
+                  if elem:
+                     elem.focus()
                value = @state.text
                on-change(e) =
                   @set-state with {text = e.target.value}
-
+               on-key-down(e) =
+                  interactor.keydown(e)
+               on-key-up(e) =
+                  interactor.keyup(e)
 
 component Tab:
    mixins = {StandardComponent}
    get-initial-state() = {
-      active = false
-      ;; label = @props.channels[0]
-      ;; channels = new Set(@props.channels or {})
-      ;; active = @props.active
-      messages = @props.master.messages
-      ;; messages = add-messages({}) with (@props.initial-messages or {}) each m ->
-      ;;    transform-message.call(@, m)
+      active = @props.master.active
    }
    events() = {
       set-active(state) =
          @set-state with {active = state}
-
-      add-message(m) =
-         @set-state with {
-            messages = @state.messages ++ {m}
-         }
-      
-      delete-message(m) =
-         @set-state with {
-            messages = @state.messages each m2 when m !== m2 -> m2
-         }
-
-      ;; select-tab(name) =
-      ;;    @set-state with {active = @props.label === name}
-
-      ;; ;; m_nick(channel, msg) =
-      ;; ;;    if get-channel(@state.label) === msg.from
-      ;; ;;       \ and get-network(channel) === get-network(@state.label):
-      ;; ;;       @set-state with {
-      ;; ;;          label = {get-network(channel), msg.to}.join("/")
-      ;; ;;          channels = new Set({channel})
-      ;; ;;       }
-
-      ;; m_raw(channel, msg) =
-      ;;    if msg.type === .notice and @state.active:
-      ;;       @set-state with {
-      ;;          messages = add-message(@state.messages) with
-      ;;             transform-message.call(@, msg)
-      ;;       }
-      ;;    elif @state.channels.has(channel):
-      ;;       @set-state with {
-      ;;          messages = add-message(@state.messages) with
-      ;;             transform-message.call(@, msg)
-      ;;       }
-
-      ;; error(channel, msg, error) =
-      ;;    if @state.channels.has(channel):
-      ;;       @set-state with {
-      ;;          messages = @state.messages ++ {err} where err = {
-      ;;             type = .error
-      ;;             message = msg
-      ;;             error = error
-      ;;          }
-      ;;       }
    }
-
    render() =
       .tab-window %
          class-name = if{@state.active, .active, ""}
-         .messages %
-            @state.messages each m ->
-               Message %
-                  key = m.message-id
-                  master = @props.master
-                  message = m
+         Messages %
+            master = @props.master
          Users %
             master = @props.master
-            ;; channels = @state.channels
          Interactor %
             master = @props.master
 
 
+component Intercalary:
+   render() =
+      m1 = @props.message1
+      m2 = @props.message2
+      t1 = mom(m1.end-time or m1.time)
+      t2 = mom(m2.start-time or m2.time)
+      seconds = t2.diff(t1) // 1000
+      if seconds > @props.threshold:
+         minutes = seconds // 60
+         hours = minutes // 60
+         days = hours // 24   
+         text =
+            if seconds == 1:
+               "1 second"
+            elif seconds < 60:
+               '{seconds} seconds'
+            elif minutes < 2:
+               '1 minute and {seconds mod 60} seconds'
+            elif minutes < 60:
+               '{minutes} minutes'
+            elif hours < 2:
+               '1 hour and {minutes mod 60} minutes'
+            elif hours < 24:
+               '{hours} hours'
+            elif days < 2:
+               '1 day and {hours mod 24} hours'
+            else:
+               '{days} days'
+         .message %
+            .message-channel % ""
+            .message-source % ""
+            .elapsed-time %
+               text
+      else:
+         span % ""
+
+
+component Messages:
+   mixins = {StandardComponent}
+
+   get-initial-state() = {
+      messages = @populate(@props.master.messages)
+      active-channel = @props.master.active-channel
+      now = moment()
+   }
+
+   populate(messages) =
+      s = SortedArray(___, false) with m -> m.start-time + " " + m.seq-id
+      s.populate(messages)
+
+   component-will-update() =
+      node = ReactDOM.findDOMNode(@)
+      @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight
+
+   component-did-update() =
+      if @at-bottom:
+         node = ReactDOM.findDOMNode(@)
+         node.scrollTop = node.scrollHeight
+
+   events() = {
+      ;; tick() =
+      ;;    @set-state with {
+      ;;       now = moment()
+      ;;    }
+
+      set-active-channel(ch) =
+         @set-state with {
+            active-channel = ch
+         }
+
+      add-message(m) =
+         @set-state with {
+            messages = @state.messages.add(m)
+         }
+      
+      delete-message(m) =
+         @set-state with {
+            messages = @state.messages.delete(m)
+         }
+
+      error(channel, msg, error) =
+         @set-state with {
+            messages = @state.messages ++ {err} where err = {
+               type = .error
+               message = msg
+               error = error
+            }
+         }
+   }
+   render() =
+      var prev = null
+      .messages %
+         @state.messages each m ->
+            active = m.channel === @props.master.active-channel
+            result =
+               div %
+                  className = if{active, "active-message", "inactive-message"}
+                  if prev and false:
+                     Intercalary %
+                        threshold = 5
+                        message1 = prev
+                        message2 = m
+                  Message %
+                     key = m.message-id
+                     active = active
+                     master = @props.master
+                     message = m
+            prev = m
+            result
+         if prev and false:
+            Intercalary %
+               threshold = 5
+               message1 = prev
+               message2 = {time = @state.now}
+
+      ;; var prev = null
+      ;; .messages %
+      ;;    @state.messages each m ->
+      ;;       curr = mom(m.time)
+      ;;       diff = if{prev, Math.abs(prev.diff(curr)), 0}
+      ;;       prev = curr
+      ;;       result = Message %
+      ;;          key = m.message-id
+      ;;          master = @props.master
+      ;;          message = m
+      ;;       if diff > 5000:
+      ;;          div %
+      ;;             .inactivity-period %
+      ;;                String{'{diff // 1000} seconds of inactivity'}
+      ;;             result
+      ;;       else:
+      ;;          result
+      ;;    do:
+      ;;       diff = Math.abs(prev.diff(moment()))
+      ;;       if diff > 5000:
+      ;;          .inactivity-period %
+      ;;             String{'{diff // 1000} seconds of inactivity'}
+      ;;       else:
+      ;;          ""
+
+
+
 component Users:
    mixins = {StandardComponent}
+   compute-users(users) =
+      all-users = object with items(users) each {channel, _users} ->
+         s = SortedArray(___, false) with
+            u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
+         s.populate(items(_users) each {name, u} -> u)
+         {channel, s}
+      all-users
+   get-for-channel(channel) =
+      @state.users[channel] or=
+         SortedArray(___, false) with
+            u -> {0*compute-level(u.modes), u.nickname.to-lower.case()}
    get-initial-state() = {
-      users = @props.master.users
+      active-channel = @props.active-channel
+      users = @compute-users(@props.master.users)
    }
    events() = {
-      update-user(*) =
+      update-user(channel, u) =
+         @get-for-channel(channel).add(u)
          @set-state with {
-            users = merge.clone(@props.master.users)
+            users = @state.users
          }
-      remove-user(*) =
+      remove-user(channel, u) =
+         @get-for-channel(channel).delete(u)
          @set-state with {
-            users = merge.clone(@props.master.users)
+            users = @state.users
          }
-      ;; users-changed(channel, users) =
-      ;;    if @props.channels.has(channel):
-      ;;       @set-state with {
-      ;;          users = merge.clone(users)
-      ;;       }
+      set-active-channel(channel) =
+         @set-state with {
+            active-channel = channel
+         }
    }
    render() =
       .users %
-         items(@state.users) each {channel, users} ->
-            items(users) each {nickname, data} ->
-               l = compute-level(data.modes)
-               span.user-name %
-                  class-name = 'user-level-{l}'
-                  nickname
-               ;; .user %
-               ;;    .user-status %
-               ;;       ;; " +%@&~"[compute-level(data.modes)] or "?"
-               ;;    .user-name %
-               ;;       nickname
-         ;; items(@state.users) each {nickname, data} ->
-         ;;    .user %
-         ;;       .user-status %
-         ;;          consume(data.modes or {}).join("")
-         ;;       .user-name %
-         ;;          nickname
+         (@state.users[@state.active-channel or ""] or {}) each data ->
+            l = compute-level(data.modes)
+            span.user-name %
+               class-name = 'user-level-{l}'
+               data.nickname
 
 
 component ChatApp:
    mixins = {StandardComponent}
    get-initial-state() = {
-      tabs = {}
+      tabs = @props.master.views each view -> @make-tab(view)
+   }
+   make-tab(view) = {
+      view = view
+      label =
+         TabLabel %
+            master = view
+      contents =
+         Tab %
+            master = view
    }
    events() = {
       add-view(view) =
          is-first = @state.tabs.length === 0
-         new-tab = {
-            view = view
-            label =
-               TabLabel %
-                  master = view
-            contents =
-               Tab %
-                  master = view
-         }
+         new-tab = @make-tab(view)
          @set-state with {tabs = @state.tabs ++ {new-tab}}
          if is-first:
             @props.master.activate(view)
@@ -290,46 +504,11 @@ component ChatApp:
          @set-state with {
             tabs = @state.tabs each tab when tab.view !== view -> tab
          }
-
-      ;; m_raw(channel, msg) =
-      ;;    ;; elif @state.tabs.every(x -> not x.contents.state.channels.has(channel)):
-      ;;    if msg.type === .notice:
-      ;;       pass
-      ;;    elif @state.tabs.every(x -> not x.label.props.label === channel):
-      ;;       is-first = @state.tabs.length === 0
-      ;;       @set-state with {
-      ;;          tabs = @state.tabs ++ {
-      ;;             {
-      ;;                label =
-      ;;                   TabLabel %
-      ;;                      master = @props.master
-      ;;                      label = channel
-      ;;                      selected = is-first
-      ;;                contents =
-      ;;                   Tab %
-      ;;                      master = @props.master
-      ;;                      initial-messages = {msg}
-      ;;                      label = channel
-      ;;                      channels = {channel}
-      ;;                      active = is-first
-      ;;             }
-      ;;          }
-      ;;       }
    }
+
    render() =
       .main-window %
          .tab-labels %
             @state.tabs each {=> label} -> label
          .tab-area %
             @state.tabs each {=> contents} -> contents
-
-
-setup(options) =
-   src = match options:
-      {=> messages} -> StaticSource(options.messages)
-      {=> stream} -> StreamSource(stream.[in], stream.out)
-   let master = Dispatcher(src)
-   React.render(a, options.mount) where a =
-      ChatApp %
-         master = master
-   master.run()

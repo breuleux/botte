@@ -7,8 +7,16 @@ require:
    commander
    child_process ->
       spawn
+   open
 
 var main-window = null
+
+
+remove-xframe-options-header(d, c) =
+   if (d.response-headers['x-frame-options']):
+      delete d.response-headers['x-frame-options']
+   c with {cancel = false, response-headers = d.response-headers}
+
 
 
 create-window() =
@@ -20,8 +28,8 @@ create-window() =
         @parse(process.argv)
 
    w = new BrowserWindow with {
-      width = 800
-      height = 800
+      width = 1200
+      height = 900
       web-preferences = {
          experimental-features = true
       }
@@ -31,6 +39,16 @@ create-window() =
    w.web-contents.open-dev-tools()
    w.on(.closed) with {} ->
       main-window = null
+
+   handle-redirect(e, url) =
+      if url != w.web-contents.getURL():
+        e.preventDefault()
+        open(url)
+
+   w.web-contents.on('will-navigate', handle-redirect)
+   w.web-contents.on('new-window', handle-redirect)
+   ;; w.web-contents.session.web-request.on-headers-received
+   ;;     \ ({=}, remove-xframe-options-header)
 
    ipc-main.on(.ready) with ->
       cmd =

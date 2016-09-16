@@ -1,0 +1,174 @@
+
+require:
+   react-dom as ReactDOM
+   react-youtube-player as YoutubePlayer
+   react-addons-pure-render-mixin as PureRender
+   request-promise as rq
+   promisify! open-graph as og
+
+require-macros:
+   earl-react ->
+      %, component
+
+provide:
+   expand-links
+
+
+ExpanderComponent = {
+   method get-initial-state() = {
+      hide-link = @props.hide-link
+      open = @props.open
+      has-icon = true
+   }
+   method render() =
+      image = if{@state.open, @opened-icon or "base/cross", @closed-icon}
+      span %
+         if not @state.hide-link: {
+            a %
+               href = @props.href
+               @props.href
+            if @state.has-icon:
+               span.expand-image %
+                  img.expander-icon %
+                     src = '../assets/entypo/{image}.svg'
+                  on-click() =
+                     @set-state with {open = not @state.open}
+         }
+         if @state.open:
+            @render-opened()
+}
+
+component ImageExpander:
+   mixins = {ExpanderComponent, PureRender}
+   closed-icon = "base/camera"
+   render-opened() =
+      img %
+         style = {
+            display = .block
+            max-height = 500
+            max-width = 800
+         }
+         src = @props.href
+
+component YoutubeExpander:
+   mixins = {ExpanderComponent, PureRender}
+   closed-icon = "base/controller-play"
+   render-opened() =
+      YoutubePlayer %
+         videoId = @props.id
+         width = 560
+         height = 315
+         playbackState = .playing
+         configuration = {showinfo = 0, controls = 1}
+
+component TwitterExpander:
+   mixins = {ExpanderComponent, PureRender}
+   closed-icon = "social/twitter"
+   get-initial-state() = {
+      html = "Awaiting response ..."
+   }
+   async component-will-mount() =
+      result = await rq with
+         uri = 'https://publish.twitter.com/oembed?url={encodeURIComponent(@props.href)}&omit_script=true'
+         json = true
+      print result
+      @set-state with {
+         html = result.html
+      }
+   async component-did-mount() =
+      globals: twttr, MutationObserver
+      node = ReactDOM.findDOMNode(@)
+      ;; m = new MutationObserver with m -> print m
+      ;; m.observe(node, {subtree = true, attributes = true})
+      twttr.widgets.load(node)
+   async component-did-update() =
+      globals: twttr
+      twttr.widgets.load(ReactDOM.findDOMNode(@))
+   ;; component-did-update() =
+   ;;    root = ReactDOM.findDOMNode(@)
+   ;;    node = root.querySelector(".filler")
+   ;;    if node:
+   ;;       node.innerHTML = @state.html
+   render-opened() =
+      ;; React.create-element(.div, {dangerouslySetInnerHTML = {__html = @state.html}})
+      ;; .filler %
+      div %
+         dangerouslySetInnerHTML = {__html = @state.html}
+
+
+component PastebinExpander:
+   mixins = {ExpanderComponent, PureRender}
+   closed-icon = "base/text-document-inverted"
+   render-opened() =
+      iframe %
+         src = 'http://pastebin.com/embed_iframe/{@props.id}'
+         style = {width = "100%", height = "1em", border = "1px solid #888"}
+         on-load(e) =
+            frame-height = e.target.content-window.document.body.scroll-height
+            new-height = if{frame-height > 300, 300, frame-height}
+            e.target.style.height = '{new-height}px'
+
+component OpenGraphExpander:
+   mixins = {ExpanderComponent, PureRender}
+   closed-icon = "base/globe"
+   async component-will-mount() =
+      graph = await og(@props.href)
+      if graph.title:
+         @set-state with {graph = graph, has-icon = true}
+      else:
+         @set-state with {has-icon = false}
+   get-initial-state() = {
+      graph = null
+   }
+   render-opened() =
+      g = @state.graph
+      if g:
+         a.website-card %
+            href = @props.href
+            if g.image:
+               img.website-media %
+                  src = g.image.url
+            .website-content %
+               .website-title %
+                  g.title or @props.href
+               .website-description %
+                  (g.description or "").trim()
+            .website-name %
+               g.site_name
+
+
+expand-links(text) =
+   splits = text.split(R"(https?://[^ \n\t\[\]{}()\xa0]+)")
+   enumerate(splits) each {match i, split} ->
+      when i mod 2 == 1 -> {
+         match split:
+            R.i"\.(jpg|jpeg|png|gif|bmp)$"? ->
+               ImageExpander %
+                  href = split
+                  open = false
+            R"^https?://(www\.)?twitter.com/.*"? ->
+               TwitterExpander %
+                  href = split
+                  open = false
+            R"^https?://(?:www\.)?youtube.com/(?:watch|embed)\?v=(.*)"! {_, id} ->
+               YoutubeExpander %
+                  href = split
+                  id = id
+                  open = false
+            R"^https?://(?:www\.)?pastebin.com/(.*)"! {_, id} ->
+               PastebinExpander %
+                  href = split
+                  id = id
+                  open = true
+            else ->
+               OpenGraphExpander %
+                  href = split
+                  has-icon = false
+                  open = false
+            ;; else ->
+            ;;    a %
+            ;;       href = split
+            ;;       split
+      }
+      else ->
+         split

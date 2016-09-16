@@ -1,12 +1,23 @@
 
 require:
+   fs
+   earl-react as React
+   react-dom as ReactDOM
    events -> EventEmitter
    electron -> ipc-renderer
    /browser -> document
    /dom
    .components ->
-      setup
+      ChatApp
+   .source ->
+      StreamSource
+      StaticSource
+   .master ->
+      Dispatcher
 
+require-macros:
+   earl-react ->
+      %, component
 
 stdin-buffer = new EventEmitter()
 ipc-renderer.on(.data) with {event, data} ->
@@ -15,145 +26,35 @@ ipc-renderer.on(.end) with {event, data} ->
    stdin-buffer.emit(.end)
 ipc-renderer.send(.ready)
 
-mount-node = document.get-element-by-id("mount")
-setup with {
-   mount = mount-node
-   stream = {
-      "in" = stdin-buffer
-      out = {write(x) = ipc-renderer.send(.data, x)}
+setup(options) =
+   src = match options:
+      {=> messages} -> StaticSource(options.messages)
+      {=> stream} -> StreamSource(stream.[in], stream.out)
+   let master = Dispatcher(src)
+
+   items(options.settings.client.groups) each
+      {label, channels} ->
+         view = master.add-view(label)
+         channels each ch ->
+            view.add-channel(ch)
+            view.set-active-channel(ch)
+         view.add-channel("/notice")
+         master.activate(view)
+
+   ReactDOM.render(a, options.mount) where a =
+      ChatApp %
+         master = master
+   master.run()
+
+main() where main() =
+   mount-node = document.get-element-by-id("mount")
+   setup with {
+      mount = mount-node
+      stream = {
+         "in" = stdin-buffer
+         out = {write(x) = ipc-renderer.send(.data, x)}
+      }
+      settings = JSON.parse with
+         ;; fs.read-file-sync("debug.json", .utf8)
+         fs.read-file-sync("botte.json", .utf8)
    }
-   ;; messages = {
-   ;;    {channel = "apricot"
-   ;;     agent = "John"
-   ;;     type = "message"
-   ;;     format = "irc"
-   ;;     content = "What's your favorite fruit?"}
-   ;;    {channel = "apricot"
-   ;;     agent = "Steve"
-   ;;     type = "message"
-   ;;     format = "irc"
-   ;;     content = "I am partial to strawberries."}
-   ;;    {channel = "banana"
-   ;;     agent = "Steve"
-   ;;     type = "message"
-   ;;     format = "irc"
-   ;;     content = "ELLO??"}
-   ;;    {channel = "apricot"
-   ;;     agent = "Jonathan"
-   ;;     type = "message"
-   ;;     format = "irc"
-   ;;     content = "Cherries are way better."}
-   ;; }
-   nickname = "Francisco"
-}
-
-
-
-;; class Tab:
-
-;;    constructor(@label, @channels) =
-;;       @dom-label = null
-;;       @dom-element = null
-
-;;    render-label() =
-;;       .tab-label %
-;;          @label
-
-;;    render() =
-;;       .tab-window %
-;;          .messages %
-;;          .users %
-;;          .interact %
-;;             input.chat-input %
-;;                value = ""
-
-
-;; class ChatApp:
-
-;;    constructor(@options) =
-;;       @tabs = {}
-
-;;    render-main() =
-;;       .main-window %
-;;          .tabs %
-;;          .tab-area %
-
-;;    add-tab() =
-;;       pass
-
-
-;;    ;; render() =
-;;    ;;    .main-window %
-;;    ;;       .tab-labels %
-;;    ;;          {.allo, .bonjour, .cerise} each word ->
-;;    ;;             .tab % word
-;;    ;;          .tab-label.selected % .durian
-;;    ;;          .tab-label % .elephant
-;;    ;;       .tab-area % .tab-window.active %
-;;    ;;          .messages %
-;;    ;;             .message %
-;;    ;;                .message-source % "Steve"
-;;    ;;                .message-content % "I am so baked!"
-;;    ;;             .message %
-;;    ;;                .message-source % "John"
-;;    ;;                .message-content % "Me too, buddy. Me too."
-;;    ;;          .users %
-;;    ;;             .user %
-;;    ;;                .user-status % "@"
-;;    ;;                .user-name % "Steve"
-;;    ;;             .user %
-;;    ;;                onclick() =
-;;    ;;                   alert("BOOH")
-;;    ;;                .user-status % "@"
-;;    ;;                .user-name % "John"
-;;    ;;          .interact %
-;;    ;;             input.chat-input %
-;;    ;;                value = "Valhallaaaaa"
-
-
-;; app = ChatApp with {
-;;    ;; {
-;;    ;;    name = "#allo"
-;;    ;;    lines = {}
-;;    ;;    users = {}
-;;    ;; }
-;; }
-
-;; mount-node = document.get-element-by-id("mount")
-;; mount-node.append-child(dom with app.render())
-
-
-;; ;; require-macros:
-;; ;;    earl-react ->
-;; ;;       %, component
-
-;; ;; component TodoList:
-;; ;;    render() =
-;; ;;       ul % enumerate(@props.items) each {i, item} ->
-;; ;;          li %
-;; ;;             key = i + item
-;; ;;             item
-
-;; ;; component TodoApp:
-;; ;;    get-initial-state() =
-;; ;;       {items = {}, text = ""}
-;; ;;    render() =
-;; ;;       div %
-;; ;;          h3.quack % "TODO"
-;; ;;          TodoList % items = @state.items
-;; ;;          form %
-;; ;;             on-submit(e) =
-;; ;;                e.prevent-default()
-;; ;;                @set-state with {
-;; ;;                   items = @state.items.concat({@state.text})
-;; ;;                   text = ""
-;; ;;                }
-;; ;;             input %
-;; ;;                value = @state.text
-;; ;;                on-change(e) =
-;; ;;                   @set-state with {text = e.target.value}
-;; ;;             button % 'Add #{@state.items.length + 1}'
-
-;; ;; mount-node = document.get-element-by-id("mount")
-;; ;; React.render(TodoApp %, mount-node)
-

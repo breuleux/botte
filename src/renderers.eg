@@ -3,7 +3,10 @@ require:
    .utilities ->
       compute-level
       get-network
+      shorten
    lodash
+   .links ->
+      expand-links
 
 require-macros:
    earl-react ->
@@ -14,12 +17,14 @@ provide:
 
 message-renderers = Object.assign(Object.create(null)) with {
    method message(m) =
-      @show-message(m.agent, m.content)
+      @show-message(m.channel, m.agent, m.content)
+
+   method action(m) =
+      @show-message(m.channel, m.agent, m.content, .action)
 
    method traffic(m) =
-      .message %
-         .message-source % ""
-         .message-traffic %
+      @show-message(shorten(m.channel), "", content, .traffic) where
+         content =
             items(m.changes) each {nick, changes} ->
                initial = m.initial[nick]
                state = {
@@ -33,11 +38,11 @@ message-renderers = Object.assign(Object.create(null)) with {
                changes each
                   #join{} ->
                      state.present = true
+                     state.modes = new Set()
                      state.movement.push with
                         span.user-join % "▲"
                   #part{} or #quit{} ->
                      state.present = false
-                     state.modes = new Set()
                      state.movement.push with
                         span.user-part % "▼"
                   #kick{} ->
@@ -55,6 +60,7 @@ message-renderers = Object.assign(Object.create(null)) with {
                   else ->
                      pass
                if state.nick-sequence.length === 1
+                  \ and initial.present === state.present
                   \ and compute-level(state.modes)
                       \ != compute-level(initial.modes):
                      state.nick-sequence.push with
@@ -62,7 +68,7 @@ message-renderers = Object.assign(Object.create(null)) with {
                state.nick-sequence[state.nick-sequence.length - 1][1] =
                   compute-level(state.modes)
                if state.movement.length > 0 or state.nick-sequence.length > 1:
-                  span %
+                  span.user-traffic %
                      span.user-movement %
                         state.movement
                      span %
@@ -73,17 +79,20 @@ message-renderers = Object.assign(Object.create(null)) with {
                               true? -> "user-joined"
                               false? -> "user-left"
                         state.nick-sequence each {n, l} ->
-                           span.user-nickname %
-                              class-name = 'user-level-{l}'
-                              n
+                           span.traffic-name %
+                              span %
+                                 class-name = 'user-level-{l}'
+                                 n
                else:
                   span % ""
 
    method topic(m) =
       if m.content:
-         .channel-topic %
-            .channel-topic-content % m.content
-            .channel-topic-set-by % m.agent
+         .message.topic %
+            .message-channel % shorten(m.channel)
+            .channel-topic %
+               .channel-topic-content % expand-links(m.content)
+               .channel-topic-set-by % m.agent
 
    method add-mode(m) =
       ag = m.agent or get-network(m.channel) or "??"
@@ -97,14 +106,15 @@ message-renderers = Object.assign(Object.create(null)) with {
       null
 
    method notice(m) =
-      @show-message(m.agent, m.content, .notice)
+      @show-message(m.channel, m.agent, m.content, .notice)
 
    method motd(m) =
-      @show-message(m.agent, m.content)
+      @show-message(m.channel, m.agent or "", m.content, .motd)
 
    method error(m) =
       print m.error
       .message.unhandled %
+         .message-channel % shorten(m.channel)
          .message-source.unhandled % "!ERROR!"
          .message-content %
             div % m.error.message
@@ -112,6 +122,7 @@ message-renderers = Object.assign(Object.create(null)) with {
 
    method _unhandled(m) =
       .message.unhandled %
+         .message-channel % shorten(m.channel)
          .message-source.unhandled % "!UNHANDLED!"
          .message-content % JSON.stringify(@props.message, null, 2)
 }

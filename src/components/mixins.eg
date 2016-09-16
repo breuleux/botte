@@ -1,0 +1,18 @@
+
+require:
+   react-addons-pure-render-mixin as PureRender
+
+provide:
+   PureRender
+   MasterEvents
+
+MasterEvents = {
+   method component-will-mount() =
+      @__events = Object.assign(Object.create(null), @events())
+      items(@__events) each {ev, fn} ->
+         @props.master.on(ev, fn)
+   method component-will-unmount() =
+      items(@__events) each {ev, fn} ->
+         @props.master.remove-listener(ev, fn)
+}
+

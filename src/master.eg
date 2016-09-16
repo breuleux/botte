@@ -13,15 +13,16 @@ require:
 provide:
    View
    Dispatcher
-   ;; MessageComposer
-   ;; Master
 
+
+var __id = 0
+next-id() =
+   __id += 1
 
 
 class View < EventEmitter:
 
-   constructor(channels, @transformers, @mergers) =
-      @_label = null
+   constructor(@_label, channels, @transformers, @mergers) =
       @active = false
       @active-channel = null
       @max-size = 1000
@@ -29,6 +30,8 @@ class View < EventEmitter:
       @users = {=}
       @own-names = {=}
       @channels = new Set()
+      set-interval(fn, 1000) where fn() =
+         @emit(.tick)
       channels each c ->
          @add-channel(c)
 
@@ -36,6 +39,10 @@ class View < EventEmitter:
 
    active-nickname() =
       @own-names[@active-channel or ""] or ""
+
+   set-nickname(channel, name) =
+      @own-names[channel] = name
+      @emit(.set-nickname, channel, name)
 
    ;; Group label
 
@@ -125,8 +132,7 @@ class View < EventEmitter:
 
          .nick ->
             if not m.from or m.from === @own-names[channel]:
-               @own-names[channel] = m.to
-               @emit(.change-nickname, channel, m.to)
+               @set-nickname(channel, m.to)
             @with-user(channel, m.from) with u ->
                u & {nickname = m.to}
 
@@ -150,7 +156,7 @@ class View < EventEmitter:
          .join ->
             @with-user(channel, m.agent) with u -> u
             if m.self:
-               @own-names[channel] = m.agent
+               @set-nickname(channel, m.agent)
 
          .part or .quit ->
             @remove-user(channel, m.agent)
@@ -174,18 +180,24 @@ class View < EventEmitter:
       loopy(m) =
          fn = @transformers[m.type] or @transformers._other
          m2 = fn.call(@, m)
-         if not m2 or m === m2:
+         if not m2:
+            null
+         elif m2 === true or m === m2:
             m
          else:
             loopy(m2)
       result = loopy(m)
+      if not result:
+         return result
       {.time, .channel} each field ->
          result[field] = m[field]
+      result.start-time and result.end-time = result.time
       result.message-id = uuid()
+      result.seq-id = next-id()
       result
 
    merge-messages(m1, m2) =
-      if m1.type !== m2.type:
+      if m1.type !== m2.type or m1.channel !== m2.channel:
          return {m1, m2}
       fn = @mergers[m1.type] or @mergers._other
       m3 = fn.call(@, m1, m2)
@@ -193,38 +205,59 @@ class View < EventEmitter:
          {m1, m2}
       else:
          m3.message-id = uuid()
-         m3.time = m2.time
+         m3.seq-id = next-id()
+         m3.start-time = m1.start-time or m1.time
+         m3.end-time = m2.end-time or m2.time
+         if not m3.time:
+            m3.time = m2.time
          {m3}
 
    ;; Message stream
 
    append-message(m) =
-      while @messages.length > @max-size:
-         @messages.shift()
       @messages.push(m)
+      @emit(.add-message, m)
+
+   insert-message(m, i) =
+      @messages.splice(i, 0, m)
       @emit(.add-message, m)
 
    pop-message() =
       @emit(.delete-message, @messages.pop())
 
-   incorporate-message(m, change = false) =
+   delete-message(i) =
+      @emit(.delete-message, @messages.splice(i, 1)[0])
+
+   find-latch(m) =
       ml = @messages.length
-      if ml > 0:
-         last = @messages[ml - 1]
-         match @merge-messages(last, m):
+      var n = ml - 1
+      while n > ml - 20:
+         m2 = @messages[n]
+         if m2 and m.channel === m2.channel:
+            return n
+         n -= 1
+      return null
+
+   incorporate-message(m, orig = @messages.length) =
+      idx = @find-latch(m)
+      if idx !== null:
+         m2 = @messages[idx]
+         match @merge-messages(m2, m):
             {_, _} ->
-               @append-message(m)
+               @insert-message(m, orig)
             {nm} ->
-               @pop-message()
-               @incorporate-message(nm)
+               @delete-message(idx)
+               @incorporate-message(nm, idx)
       else:
-         @append-message(m)
+         @insert-message(m, orig)
 
    ;; Processing a message
 
    process-message(m) =
-      @incorporate-message(@transform-message(m))
-      @update-from-message(m)
+      m2 = @transform-message(m)
+      if m2:
+         @incorporate-message(m2)
+         @update-from-message(m)
 
    process-messages(ms) =
       ms each m ->
@@ -242,6 +275,8 @@ class Dispatcher < EventEmitter:
 
    constructor(@source) =
       @views = {}
+      set-interval(fn, 1000) where fn() =
+         @emit(.tick)
 
    activate(view) =
       @views each match v ->
@@ -250,15 +285,24 @@ class Dispatcher < EventEmitter:
          else ->
             v.set-active(false)
 
+   view-trigger(m) =
+      m.type in {.notice, .join, .message, .action, .motd}
+
+   add-view(label = null) =
+      view = View(label, {}, message-transformers, message-mergers)
+      view.master = @
+      @views.push(view)
+      view
+
    process(new-message) =
       if not new-message:
          return null
       channel = new-message.channel
       targets = @views each v when v.accepts(new-message) -> v
-      if targets.length === 0:
-         view = View({channel, "/notice"}, message-transformers, message-mergers)
-         view.master = @
-         @views.push(view)
+      if targets.length === 0 and @view-trigger(new-message):
+         view = @add-view(null)
+         view.add-channel(channel)
+         view.add-channel("/notice")
          view.process-message(new-message)
          @emit(.add-view, view)
       else:
@@ -268,109 +312,12 @@ class Dispatcher < EventEmitter:
    send(message) =
       @source.send(message)
 
-   ;; async next() =
-   ;;    m = @source.next()
-   ;;    m.message-id = uuid()
-   ;;    @process(await m)
-
    async run() =
       while true:
          m = await @source.next()
          if m === null or m === undefined:
             break
          m.message-id = uuid()
+         m.seq-id = next-id()
          @process(m)
 
-         ;; m.message-id = uuid()
-         ;; try:
-         ;;    @emit('m_{m.type}', m.channel, m)
-         ;;    @emit('m_raw', m.channel, m)
-         ;;    @update-data(m)
-         ;; catch e:
-         ;;    @emit(.error, m.channel, m, e)
-
-
-
-
-;; class MessageComposer:
-
-;;    constructor(@source) =
-;;       @channels = {}
-
-;;    send(message) =
-;;       @source.send(message)
-
-;;    process(new-message) =
-;;       if not new-message:
-;;          return null
-;;       channel = new-message.channel
-;;       @channels[channel] or= {}
-;;       @channels[channel].push with new-message
-;;       new-message
-
-;;    async next() =
-;;       @process(await @source.next())
-
-
-
-;; class Master < EventEmitter:
-;;    constructor(@composer) =
-;;       @users = {=}
-;;       @nickname = "???"
-;;    select-tab(label) =
-;;       @emit(.select-tab, label)
-;;    send-message(message) =
-;;       @composer.send(message)
-;;    update-data(m) =
-;;       if not m.channel:
-;;          return
-;;       d = (@users[m.channel] or= {=})
-;;       match m.type:
-;;          .nick ->
-;;             if not m.from:
-;;                @nickname = m.to
-;;                @emit(.change-nickname, @nickname)
-;;                return
-;;             else:
-;;                d[m.to] = d[m.from]
-;;                delete d[m.from]
-;;          .names ->
-;;             items(m.content) each {nickname, data} ->
-;;                d2 = (d[nickname] or= {=})
-;;                s = (d2.modes or= (new Set()))
-;;                data.operator-level each
-;;                   "~" -> s.add("q")
-;;                   "&" -> s.add("a")
-;;                   "@" -> s.add("o")
-;;                   "%" -> s.add("h")
-;;                   "+" -> s.add("v")
-;;                   other -> pass
-;;          .join ->
-;;             d[m.agent] = {=}
-;;          .part or .quit ->
-;;             delete d[m.agent]
-;;          .add-mode when R"[vhoaq]"? m.mode ->
-;;             ;; m.argument and not is-channel(m.argument) ->
-;;             d2 = (d[m.argument] or= {=})
-;;             s = (d2.modes or= (new Set()))
-;;             s.add(m.mode)
-;;          .remove-mode when R"[vhoaq]"? m.mode ->
-;;             ;; when m.argument and not is-channel(m.argument) ->
-;;             d2 = (d[m.argument] or= {=})
-;;             s = (d2.modes or= (new Set()))
-;;             s.delete(m.mode)
-;;          else ->
-;;             return
-;;       @emit(.users-changed, m.channel, d)
-;;    async run() =
-;;       while true:
-;;          m = await @composer.next()
-;;          if m === null or m === undefined:
-;;             break
-;;          m.message-id = uuid()
-;;          try:
-;;             @emit('m_{m.type}', m.channel, m)
-;;             @emit('m_raw', m.channel, m)
-;;             @update-data(m)
-;;          catch e:
-;;             @emit(.error, m.channel, m, e)

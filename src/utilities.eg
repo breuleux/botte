@@ -1,13 +1,22 @@
 
 require:
    lodash
+   moment
 
 provide:
    is-channel
    compute-level
    get-channel
    get-network
+   mom
+   shorten
+   SortedArray
 
+mom(d) =
+   moment(d, "YYYY-MM-DD hh:mm:ss")
+
+shorten(channel) =
+   get-channel(channel) or get-network(channel)
 
 get-network(channel) =
    channel.split("/")[... -1].join("/")
@@ -63,3 +72,61 @@ parse-space-code(s) =
       result += c2
    result
 
+
+findInsert(xs, x) =
+   var lo = 0
+   var hi = xs.length - 1
+   while lo <= hi:
+      mid = lo + ((hi - lo) // 2)
+      match xs[mid]:
+         < x  -> lo = mid + 1
+         > x  -> hi = mid - 1
+         else -> return {mid, true}
+   {lo, false}
+
+
+class SortedArray:
+
+   constructor(@key-function, @duplicate-keys = true) =
+      @_arr = {}
+      @_keys = {}
+
+   populate(elements) =
+      @_arr = lodash.sort-by(elements, @key-function)
+      @_keys = lodash.sort-by(elements.map(@key-function))
+      @
+
+   add-all(elements) =
+      elements each element ->
+         @add(element)
+      @
+
+   add(element) =
+      key = @key-function(element)
+      {idx, found} = @_find-key-index(key)
+      if not found or @duplicate-keys:
+         @_keys.splice(idx, 0, key)
+         @_arr.splice(idx, 0, element)
+      else:
+         @_keys[idx] = key
+         @_arr[idx] = element
+      @
+
+   .delete(element) =
+      key = @key-function(element)
+      {idx, found} = @_find-key-index(key)
+      if found:
+         @_keys.splice(idx, 1)
+         @_arr.splice(idx, 1)
+      else:
+         throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
+      @
+
+   find-index(element) =
+      @_find-key-index(@key-function(element))[0]
+
+   _find-key-index(key) =
+      find-insert(@_keys, key)
+
+   gen [^Symbol.iterator]() =
+      @_arr each x -> yield x

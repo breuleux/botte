@@ -1,0 +1,189 @@
+
+provide:
+   Interactor, keynames
+
+
+keynames = {
+    8 => "Backspace"
+    9 => "Tab"
+    13 => "Enter"
+    16 => "S-"
+    17 => "C-"
+    18 => "A-"
+    27 => "Esc"
+    32 => "Space"
+    33 => "PgUp"
+    34 => "PgDn"
+    35 => "End"
+    36 => "Home"
+    37 => "Left"
+    38 => "Up"
+    39 => "Right"
+    40 => "Down"
+    45 => "Insert"
+    46 => "Delete"
+    48 => "0"
+    49 => "1"
+    50 => "2"
+    51 => "3"
+    52 => "4"
+    53 => "5"
+    54 => "6"
+    55 => "7"
+    56 => "8"
+    57 => "9"
+    65 => "a"
+    66 => "b"
+    67 => "c"
+    68 => "d"
+    69 => "e"
+    70 => "f"
+    71 => "g"
+    72 => "h"
+    73 => "i"
+    74 => "j"
+    75 => "k"
+    76 => "l"
+    77 => "m"
+    78 => "n"
+    79 => "o"
+    80 => "p"
+    81 => "q"
+    82 => "r"
+    83 => "s"
+    84 => "t"
+    85 => "u"
+    86 => "v"
+    87 => "w"
+    88 => "x"
+    89 => "y"
+    90 => "z"
+    112 => "F1"
+    113 => "F2"
+    114 => "F3"
+    115 => "F4"
+    116 => "F5"
+    117 => "F6"
+    118 => "F7"
+    119 => "F8"
+    120 => "F9"
+    121 => "F10"
+    122 => "F11"
+    123 => "F12"
+}
+
+
+prevent{event} =
+   event.preventDefault{}
+   event.stopPropagation{}
+
+
+class Interactor:
+
+   constructor{target} =
+      @functions = target.interactor_functions or target
+
+      @more_functions = {
+         default{} = "default"
+         stick{} = "stick"
+         .break{} = "break"
+         none{} = undefined
+      }
+
+      @current_bindings = null
+      @global_bindings = null
+
+   set-bindings{new_bindings} =
+      @current_bindings = null
+      @global_bindings = new_bindings
+
+   execute{c, e} =
+      match c:
+         String? cmd ->
+            f{e} where
+               f = @functions[cmd] or @more_functions[cmd]
+         Function? f ->
+            f{@target, e}
+         Array? cmds ->
+            var result = null
+            cmds each cmd ->
+               result = @execute{cmd, e}
+               match result:
+                  .break ->
+                     prevent{e}
+                     break
+                  .default ->
+                     break
+                  .ignore ->
+                     continue
+                  other ->
+                     prevent{e}
+            result
+         cmd ->
+            @current_bindings = cmd
+            "break stick"
+
+   process_codes{codes, e} =
+      bindings = @current_bindings or @global_bindings
+      var just_modifiers = null
+      commands = {}
+      codes each code ->
+         if [R"^([ACS]-)+$"? code]:
+            just_modifiers = true
+         command = bindings[code]
+         if [command != undefined]:
+            commands.push with command
+
+      match commands:
+         {} ->
+            match:
+               when @current_bindings and @current_bindings._eat ->
+                  ;; We delete the sub-bindings, except for when we
+                  ;; hit modifiers without any other key.
+                  if [not just_modifiers]:
+                     @current_bindings = null
+                  prevent{e}
+               when @current_bindings and @current_bindings._browser ->
+                  if [not just_modifiers]:
+                     @current_bindings = null
+               when @current_bindings and not just_modifiers ->
+                  @current_bindings = null
+                  @process_codes{codes, e}
+               otherwise ->
+                  null
+         _ ->
+            result = @execute{commands, e}
+            if [result == undefined or [result.match and result.match{"break"}]]:
+               prevent{e}
+            if [[not [result and result.match and result.match{"stick"}]]
+                \ and @current_bindings
+                \ and not @current_bindings._stick]:
+               @current_bindings = null
+
+   getcode{e} =
+      var code = keynames[e.which] or "<"+e.which+">"
+      if e.shiftKey and code != "S-":
+         code = "S-" + code
+      if e.altKey and code != "A-":
+         code = "A-" + code
+      if [e.ctrlKey or e.metaKey] and code != "C-":
+         code = "C-" + code
+      code
+
+   keyup{e} =
+      @process_codes{{"!^All", "^" + @getcode{e}, "^All"}, e}
+
+   keydown{e} =
+      @process_codes{{"!All", @getcode{e}, "All"}, e}
+
+   keypress{e} =
+      key = e.which
+      code = "=" + String.fromCharCode{key}
+      ;; alert{code}
+      @process_codes{{"!=All", code, "=All"}, e}
+
+   install{element} =
+      element.on-key-down = @keydown.bind{@}
+      element.on-key-up = @keyup.bind{@}
+      element.on-key-press = @keypress.bind{@}
+

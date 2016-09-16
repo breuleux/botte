@@ -1,20 +1,104 @@
 
 require:
+   fs
    irc
    moment
    .source ->
       StreamSource
    .utilities ->
-      get-channel
+      get-network as extract-network
+      get-channel as extract-channel
+   commander
+
+
+method here-command(mthd, cmd, argument, channel, m) =
+   @client[mthd](channel, argument)
+   @fudge with {
+      type = cmd
+      channel = channel
+      agent = @client.nick
+      content = argument
+   }
+
+method chanarg-command(mthd, cmd, argument, m) =
+   {channel, *text} = argument.split(" ")
+   content = text.join(" ")
+   @client[mthd](channel, content)
+   @fudge with {
+      type = cmd
+      channel = channel
+      agent = @client.nick
+      content = content
+   }
+
+commands = {
+
+   method say(argument, channel, m) =
+      here-command.call(@, .say, .message, argument, channel, m)
+
+   method me(argument, channel, m) =
+      here-command.call(@, .action, .action, argument, channel, m)
+
+   method message(argument, _, m) =
+      chanarg-command.call(@, .say, .message, argument, m)
+
+   method notice(argument, _, m) =
+      chanarg-command.call(@, .notice, .notice, argument, m)
+
+   method action(argument, _, m) =
+      chanarg-command.call(@, .action, .action, argument, m)
+
+   method join(argument, _, m) =
+      @client.join(argument)
+      null
+
+   method part(argument, channel, m) =
+      @client.part(argument or channel)
+      null
+
+   method nick(argument, _, m) =
+      @client.send(.nick, argument)
+      null
+
+   method send(argument, _, m) =
+      @client.send(*argument.split(" "))
+      null
+
+   method _other(argument, channel, m) =
+      @fudge with {
+         type = .unknown-command
+         channel = channel
+         command = m.command
+         argument = m.argument
+      }
+
+}
+
+command-aliases = {
+   msg = "message"
+   j = "join"
+   ns = "message NickServ"
+   cs = "message ChanServ"
+   broo = "message Broolucks"
+}
+
 
 events = {
 
-   method registered(m) = {
-      type = .nick
-      channel = ""
-      from = null
-      to = m.args[0]
-   }
+   method registered(m) =
+      ;; {
+      ;;    type = .nick
+      ;;    channel = ""
+      ;;    from = null
+      ;;    to = m.args[0]
+      ;; }
+      @client.say("NickServ", 'id {@nickserv-password}')
+      {
+         type = .join
+         channel = ""
+         agent = @client.nick ;; m.args[0]
+         self = true
+      }
 
    method motd(text) = {
       type = .motd
@@ -173,11 +257,20 @@ events = {
 
 class IRCClient:
 
-   constructor(@network, in-stream, @nickname) =
-      @in-stream = StreamSource(in-stream, null)
+   constructor(@network, @settings) =
+      ;; @in-stream = StreamSource(in-stream, null)
+      @settings as {
+         nickname => @nickname
+         => channels
+         => user-name
+         => real-name
+         nickserv-password => @nickserv-password
+      }
       @network-prefix = 'irc://{@network}'
       @client = new irc.Client(@network, @nickname) with {
-         channels = {'#braintest'}
+         = user-name
+         = real-name
+         = channels
       }
       @pms = new Set()
       @install-handlers()
@@ -194,7 +287,7 @@ class IRCClient:
       message.channel = '{@network-prefix}/{ch.replace(R.g"/", "\\/")}' where
          ch = message.channel or ""
       message.format = "irc"
-      message.time = moment().format("YYYY-MM-DD hh:mm:ss")
+      message.time = moment().format("YYYY-MM-DD HH:mm:ss")
       message
 
    unhandled(m, args) =
@@ -215,33 +308,99 @@ class IRCClient:
          @client.add-listener(k) with {*args} ->
             @print-result(fn.call(@, *args))
 
+   process-message(message) =
+      channel = extract-channel(message.channel)
+      var cmd = message.command.to-lower-case()
+      if command-aliases[cmd] as alias:
+         {cmd, *args} = alias.split(" ")
+         message.command = cmd
+         message.argument = (args ++ {message.argument}).join(" ")
+      fn = commands[cmd] or commands._other
+      result = fn.call(@, message.argument, channel, message)
+      @print-result(result)
+
+
+class Dispatcher:
+
+   constructor(in-stream, configurations, @defaults) =
+      @in-stream = StreamSource(in-stream, null)
+      @networks = {=}
+      @configurations = {=}
+      @aliases = {=}
+      items(configurations or {=}) each {alias, cfg} ->
+         url = cfg.url or alias
+         if url !== alias:
+            @aliases[alias] = url
+         R"irc://(.*)"! {_, cfg.irc-address} = cfg.url
+         @configurations[url] = cfg
+
+   get-configuration(name) =
+      if @aliases[name] as real-name:
+         return @get-configuration(real-name)
+      return @defaults & (@configurations[name] or {=})
+
+   get-network(name) =
+      cfg = @get-configuration(name)
+      if @networks[cfg.url] as rval:
+         return rval
+      nw = IRCClient(cfg.irc-address) with {
+         nickname = cfg.nicknames[0]
+         channels = {}
+         user-name = cfg.user-name
+         real-name = cfg.real-name
+         nickserv-password = cfg.password
+      }
+      @networks[cfg.url] = nw
+      nw
+
+   connect(network, channels = {}) =
+      cfg = @get-configuration(network)
+      if @networks[cfg.url]:
+         throw E.already-connected(network)
+      nw = IRCClient(cfg.irc-address) with {
+         nickname = cfg.nicknames[0]
+         = channels
+         user-name = cfg.user-name
+         real-name = cfg.real-name
+         nickserv-password = cfg.password
+      }
+      @networks[cfg.url] = nw
+      nw      
+
    async run() =
       while true:
          message = await @in-stream.next()
-         result = @process-command(message.command, message)
-         @print-result(result)
-
-   process-command(match command, m) =
-      do:
-         channel = get-channel(m.channel)
-      .message ->
-         @client.say(channel, m.argument)
-         @fudge with {
-            type = .message
-            channel = channel
-            agent = @client.nick
-            content = m.argument
-         }
-      else ->
-         @fudge with {
-            type = .unknown-command
-            channel = channel
-            command = command
-            argument = m.argument
-         }
+         if not message:
+            return
+         network-name = extract-network(message.channel)
+         network = @get-network(network-name)
+         network.process-message(message)
 
 
-main() where async main() =
-   client = IRCClient('irc.synirc.net', process.stdin, 'Dingaling')
-   client.run()
 
+
+async main() =
+
+   cli-options =
+      chain commander:
+        @version('0.0.1')
+        @option('-s, --settings [file]', 'File defining the settings.')
+        @parse(process.argv)
+
+   settings = JSON.parse(fs.read-file-sync(cli-options.settings, .utf8))
+
+   d = Dispatcher(process.stdin, settings.networks, settings.network-defaults)
+
+   if settings.join-groups:
+      connections = {=}
+      items(settings.client.groups) each {name, channels} ->
+         channels each channel ->
+            ch = extract-channel(channel)
+            nw = extract-network(channel)
+            (connections[nw] or= {}).push(ch)
+      items(connections) each {nw, channels} ->
+         d.connect(nw, channels)
+
+   d.run()
+
+async: main()

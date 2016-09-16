@@ -3,14 +3,11 @@ require:
    node-uuid as uuid
    .utilities ->
       is-channel
+      mom
 
 provide:
    message-transformers
    message-mergers
-   transform-message
-   merge-messages
-   add-message
-   add-messages
 
 class Action:
    constructor(entry) =
@@ -45,10 +42,14 @@ message-transformers = Object.assign(Object.create(null)) with {
    method add-mode(m) =
       if R"[vhoaq]"? m.mode:
          make-traffic.call(@, m.argument, #add-mode{m.mode}, m)
+      else:
+         true
 
    method remove-mode(m) =
       if R"[vhoaq]"? m.mode:
          make-traffic.call(@, m.argument, #remove-mode{m.mode}, m)
+      else:
+         true
 
    method join(m) =
       make-traffic.call(@, m.agent, #join{}, m)
@@ -57,7 +58,10 @@ message-transformers = Object.assign(Object.create(null)) with {
       make-traffic.call(@, m.agent, #part{}, m)
 
    method quit(m) =
-      make-traffic.call(@, m.agent, #quit{}, m)
+      if (@users[m.channel] or {=})[m.agent]:
+         make-traffic.call(@, m.agent, #quit{}, m)
+      else:
+         null
 
    method kick(m) =
       make-traffic.call(@, m.kicked, #kick{}, m)
@@ -69,20 +73,6 @@ message-transformers = Object.assign(Object.create(null)) with {
       m
 
 }
-
-method transform-message(m) =
-   loopy(m) =
-      fn = message-transformers[m.type] or message-transformers._other
-      m2 = fn.call(@, m)
-      if not m2 or m === m2:
-         m
-      else:
-         loopy(m2)
-   result = loopy(m)
-   {.time, .channel} each field ->
-      result[field] = m[field]
-   result.message-id = uuid()
-   result
 
 
 
@@ -106,39 +96,25 @@ message-mergers = Object.assign(Object.create(null)) with {
 
       {
          type = .traffic
+         channel = m1.channel
          changes = changes
          initial = m2.initial & initial
       }
 
+   method message(m1, m2) =
+      if m1.agent !== m2.agent
+         \ or m1.format !== m2.format:
+         return null
+      if Math.abs(mom(m1.time).diff(mom(m2.time))) < 5000:
+         {
+            type = .message
+            channel = m1.channel
+            agent = m1.agent
+            content = m1.content + "\n" + m2.content
+            format = m1.format
+            time = m2.time
+         }
+
    method _other(m1, m2) =
       null
 }
-
-method merge-messages(m1, m2) =
-   if m1.type !== m2.type:
-      return {m1, m2}
-   fn = message-mergers[m1.type] or message-mergers._other
-   m3 = fn.call(@, m1, m2)
-   if not m3:
-      {m1, m2}
-   else:
-      m3.message-id = uuid()
-      m3.time = m2.time
-      {m3}
-
-method add-message(messages, m) =
-   ml = messages.length
-   if ml > 0:
-      last = messages[ml - 1]
-      match merge-messages(last, m):
-         {_, _} ->
-            messages ++ {m}
-         {nm} ->
-            add-message(messages.slice(0, ml - 1), nm)
-   else:
-      messages ++ {m}
-
-method add-messages(var messages, ms) =
-   ms each m ->
-      messages = add-message(messages, m)
-   messages

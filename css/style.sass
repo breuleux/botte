@@ -2,9 +2,23 @@
 $tabs-height: 40px
 $input-height: 40px
 $users-width: 200px
+$tabs-width: 200px
+$tabs-width2: 198px
 
 *
   box-sizing: border-box
+
+html
+  overflow: hidden
+
+body
+  padding: 0
+  margin: 0
+  font-family: system, -apple-system, ".SFNSDisplay-Regular", "Helvetica Neue", Helvetica, "Segoe UI", sans-serif;
+  font-size: 16px
+  line-height: 1.6
+  color: #333
+  background-color: transparent
 
 html, body, #mount, .main-window
   width: 100vw
@@ -13,41 +27,88 @@ html, body, #mount, .main-window
   max-height: 100vh
   margin: 0px
   padding: 0px
-  font-family: sans
   /* font-family: dejavu sans mono, monospace
 
 .main-window
   display: grid
-  grid-template-columns: auto
-  grid-template-rows: $tabs-height 1fr
+  /* grid-template-columns: auto
+  /* grid-template-rows: $tabs-height 1fr
+  grid-template-columns: $tabs-width 1fr
+  grid-template-rows: auto
   background: red
   /* overflow-y: scroll
   /* overflow-x: hidden
 
 .tab-labels
-  background: black
-  display: flex
+  background: white
+  border-right: 2px solid black
+  /* background: black
+  /* display: flex
 
 .tab-label
-  display: inline-block
+  /* display: inline-block
+  display: block
   padding: 5px
-  margin: 5px
+  /* margin: 5px
   margin-bottom: 0px
   color: black
   font-weight: bold
-  background: #ccc
-  border-radius: 5px 5px 0px 0px
-  min-width: 100px
-  align-self: flex-end
+  background: white
+  /* border-radius: 5px 5px 0px 0px
+  /* min-width: 100px
+  width: $tabs-width2
+  overflow: hidden
+  /* align-self: flex-end
   cursor: pointer
   transition: background 0.15s
 
-.tab-label:hover
-  background: #ddd
+.tab-channel
+  display: block
+  cursor: pointer
+  transition: background 0.15s
+  padding-left: 5px
+
+.tab-group.selected .tab-channel.active
+  font-weight: bold
+
+/* .tab-channel.active
+/*   font-weight: bold
+
+.tab-channel-activity
+  margin-left: 0.225em
+
+.tab-label-activity, .tab-channel-activity
+  display: inline-block
+  border-radius: 50%
+  margin-right: 5px
+  transition: background 0.5s
+
+.tab-label-activity
+  background: purple
+  width: 1.2em
+  height: 1.2em
+  vertical-align: middle
+
+.tab-channel-activity
+  width: 0.75em
+  height: 0.75em
+.tab-channel-activity.not-talking
+  background: black
+.tab-channel-activity.talking, .tab-label-activity.talking
+  background: orange
+.tab-channel-activity.talked, .tab-label-activity.talked
+  background: red
+
+.tab-label:hover, .tab-channel:hover
+  background: #ccc
   transition: background 0.15s
 
+.tab-label
+  background-color: #ddd
+
 .tab-label.selected, .tab-label.selected:hover
-  background-color: white
+  background-color: purple
+  color: white
 
 .tab-area
   justify-self: stretch
@@ -69,16 +130,20 @@ html, body, #mount, .main-window
   grid-column: 1 / span 1
   grid-row: 1 / span 1
   padding: 5px
-  width: calc(100vw - 200px)
-  height: calc(100vh - 80px)
+  width: calc(100vw - 400px)
+  height: calc(100vh - 40px)
   overflow-y: auto
   overflow-x: hidden
   word-wrap: wrap
+  padding-bottom: 20px
 
 .users
   background: white
   padding: 5px
   border-left: 2px solid black
+  height: calc(100vh - 40px)
+  overflow-y: auto
+  overflow-x: hidden
   grid-column: 2 / span 1
   grid-row: 1 / span 1
 
@@ -90,36 +155,53 @@ html, body, #mount, .main-window
 
 .message
   display: grid
-  grid-template-columns: auto 1fr
+  grid-template-columns: auto auto 1fr
 
 .message.notice
   background: #efe
 
+.message.action
+  font-style: italic
+  .message-content
+    border-left: none
+    padding-left: 0px
+
+.message-channel
+  width: 150px
+  /* background: #555
+  color: #aaa
+  grid-column: 1 / span 1
+  padding-right: 5px
+  overflow: hidden
+
 .message-source
   /* display: inline-block
-  width: 100px
-  grid-column: 1 / span 1
+  width: 150px
+  grid-column: 2 / span 1
   text-align: right
   padding-right: 5px
+  overflow: hidden
 
 .message-content
   white-space: pre-wrap
-  grid-column: 2 / span 1
+  grid-column: 3 / span 1
   padding-left: 5px
   border-left: 2px solid #ddd
 
-.message-traffic
-  white-space: pre-wrap
-  grid-column: 2 / span 1
-  padding-left: 5px
+/* .message-traffic
+/*   white-space: pre-wrap
+/*   grid-column: 3 / span 1
+/*   padding-left: 5px
 
-.message.unhandled
+.message.unhandled, .message.error
   background: #fee
 
-.message-source.unhandled
+.message-source.unhandled, .message-source.error
   color: red
   font-weight: bold
 
+.message.motd .message-content
+  font-family: monospace
 
 .interact form
   display: inline-block
@@ -160,22 +242,32 @@ html, body, #mount, .main-window
 .user-movement
   margin-right: 5px
 
-.user-joined .user-nickname:last-child
-  color: green
+.user-traffic:after
+  content: ", "
 
-.user-left .user-nickname:last-child
-  color: red
-
-.user-static .user-nickname:last-child
-  color: purple
-
-.user-nickname:last-child:after
+.user-traffic:last-child:after
   content: ""
 
-.user-nickname:after
+.user-joined .traffic-name:last-child
+  color: green
+
+.user-left .traffic-name:last-child
+  color: red
+
+.traffic-name
+  color: #888
+
+.user-static .traffic-name:last-child
+  color: black
+
+.traffic-name:last-child:after
+  content: ""
+
+.traffic-name:after
   content: " 🡺 "
 
 .channel-topic
+  grid-column: 2 / span 2
   width: 100%
 
 .channel-topic-content
@@ -213,47 +305,172 @@ html, body, #mount, .main-window
 .user-name
   font-size: 16px
 
-.user-level-1:before,
-.user-level-2:before,
-.user-level-3:before,
-.user-level-4:before,
-.user-level-5:before
-  margin-right: 5px
+.user-name.user-level-0:before,
+.user-name.user-level-1:before,
+.user-name.user-level-2:before,
+.user-name.user-level-3:before,
+.user-name.user-level-4:before,
+.user-name.user-level-5:before
+  display: inline-block
+  width: 20px
+  text-align: center
+  /* margin-right: 5px
 
 .user-name.user-level-0:before
-  color: transparent
-  margin-right: 5px
-  content: "◉"
+  content: " "
 
-.user-level-1:before
-  color: red
-  margin-right: 5px
-  content: "♙"
-  /* content: "♟"
-
-.user-level-2:before
-  color: brown
-  margin-right: 5px
-  content: "♘"
-  /* content: "♞"
-
-.user-level-3:before
+.user-name.user-level-1:before
   color: green
-  margin-right: 5px
-  content: "♖"
-  /* content: "♜"
-
-.user-level-4:before
-
+.user-name.user-level-2:before
   color: blue
-  margin-right: 5px
-  content: "♕"
-  /* content: "♛"
-
-.user-level-5:before
+.user-name.user-level-3:before
+  color: red
+.user-name.user-level-4:before
+  color: black
+.user-name.user-level-5:before
   color: purple
-  margin-right: 5px
-  content: "♔"
-  /* content: "♚"
+
+.user-name.user-level-1:before
+  content: "♣"
+.user-name.user-level-2:before
+  content: "♦"
+.user-name.user-level-3:before
+  content: "♥"
+.user-name.user-level-4:before
+  content: "♠"
+.user-name.user-level-5:before
+  content: "★"
+
+.traffic-name .user-level-1:after
+  vertical-align: super
+  font-size:  smaller
+  content: "♣"
+.traffic-name .user-level-2:after
+  vertical-align: super
+  font-size:  smaller
+  content: "♦"
+.traffic-name .user-level-3:after
+  vertical-align: super
+  font-size:  smaller
+  content: "♥"
+.traffic-name .user-level-4:after
+  vertical-align: super
+  font-size:  smaller
+  content: "♠"
+.traffic-name .user-level-5:after
+  vertical-align: super
+  font-size:  smaller
+  content: "★"
+ 
 
 
+/* .user-level-1:before
+/*   color: green
+/*   content: "♣"
+/*   /* color: red
+/*   /* content: "♙"
+/*   /* content: "♟"
+
+/* .user-level-2:before
+/*   color: blue
+/*   content: "♦"
+/*   /* color: brown
+/*   /* content: "♘"
+/*   /* content: "♞"
+
+/* .user-level-3:before
+/*   color: red
+/*   content: "♥"
+/*   /* color: green
+/*   /* content: "♖"
+/*   /* content: "♜"
+
+/* .user-level-4:before
+/*   color: black
+/*   content: "♠"
+/*   /* color: blue
+/*   /* content: "♕"
+/*   /* content: "♛"
+
+/* .user-level-5:before
+/*   color: purple
+/*   content: "★"
+/*   /* color: purple
+/*   /* content: "♔"
+/*   /* content: "♚"
+
+
+
+.expander-icon
+  padding-left: 3px
+  padding-right: 3px
+  height: 14px
+  cursor: pointer
+
+.website-card
+  display: grid
+  grid-template-columns: auto 1fr
+  grid-template-rows: 1fr auto
+  border: 1px solid #aaa
+  max-width: 550px
+  
+.website-media
+  width: auto
+  max-width: 120px
+  max-height: 120px
+  grid-column: 1 / span 1
+  grid-row: 1 / span 2
+
+.website-content
+  padding: 10px
+  grid-column: 2 / span 1
+  grid-row: 1 / span 1
+
+.website-title
+  font-weight: bold
+
+.website-description
+  white-space: normal
+
+.website-name
+  grid-column: 2 / span 1
+  grid-row: 2 / span 1
+  color: #888
+  text-align: right
+  padding: 3px
+  padding-right: 10px
+
+a.website-card
+  color: black
+  text-decoration: none
+
+
+.elapsed-time
+  color: #aaa
+
+.elapsed-time:before
+  content: " — "
+
+.elapsed-time:after
+  content: " — "
+
+.inactive-message
+  opacity: 0.5
+  font-size: 10px
+  background: #f5f5f5
+
+.inactive-message .traffic
+  display: none
+
+.inactive-message .topic
+  display: none
+
+/*   transition: font-size 0.15s, opacity 0.15s
+
+/* .active-message
+/*   transition: font-size 0.15s, opacity 0.15s
+
+
+.user-name.inactive
+  font-size: 10px
+  color: #aaa
