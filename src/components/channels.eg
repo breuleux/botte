@@ -2,6 +2,7 @@
 require:
    .mixins ->
       MasterEvents
+      ViewEvents
    ..utilities ->
       shorten
 
@@ -14,15 +15,15 @@ provide:
 
 
 component ChannelGroup:
-   mixins = {MasterEvents}
+   mixins = {ViewEvents}
    get-initial-state() = {
-      selected = @props.master.active
-      label = @props.master.label()
-      channels = consume(@props.master.channels)
-      active-channel = @props.master.active-channel
+      selected = @props.view.active
+      label = @props.view.label()
+      channels = consume(@props.view.channels)
+      active-channel = @props.view.active-channel
       talking = {=}
    }
-   events() = {
+   view-events() = {
       set-active(state) =
          @set-state with {selected = state}
          if state:
@@ -30,9 +31,9 @@ component ChannelGroup:
       set-label(label) =
          @set-state with {label = label}
       add-channel(channel) =
-         @set-state with {channels = consume(@props.master.channels)}
+         @set-state with {channels = consume(@props.view.channels)}
       remove-channel(channel) =
-         @set-state with {channels = consume(@props.master.channels)}
+         @set-state with {channels = consume(@props.view.channels)}
       set-active-channel(channel) =
          @set-state with {active-channel = channel}
       add-message(m) =
@@ -53,7 +54,7 @@ component ChannelGroup:
             shorten(@state.label)
             on-click() =
                if not @state.selected:
-                  @props.master.master.activate(@props.master)
+                  @props.master.activate(@props.view)
          @state.channels each
             R"^/"? or (== @state.label) ->
                continue
@@ -64,5 +65,5 @@ component ChannelGroup:
                      class-name = @state.talking[channel] or 'not-talking'
                   shorten(channel)
                   on-click() =
-                     @props.master.master.activate(@props.master)
-                     @props.master.set-active-channel(channel)
+                     @props.master.activate(@props.view)
+                     @props.view.set-active-channel(channel)

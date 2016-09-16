@@ -6,6 +6,7 @@ require:
    moment
    .mixins ->
       MasterEvents
+      ViewEvents
    ..utilities ->
       shorten
       SortedArray
@@ -69,11 +70,11 @@ component Message:
 
 
 component Messages:
-   mixins = {MasterEvents}
+   mixins = {ViewEvents}
 
    get-initial-state() = {
-      messages = @populate(@props.master.messages)
-      active-channel = @props.master.active-channel
+      messages = @populate(@props.view.messages)
+      active-channel = @props.view.active-channel
       now = moment()
    }
 
@@ -90,7 +91,7 @@ component Messages:
          node = ReactDOM.findDOMNode(@)
          node.scrollTop = node.scrollHeight
 
-   events() = {
+   view-events() = {
       ;; tick() =
       ;;    @set-state with {
       ;;       now = moment()
@@ -120,11 +121,12 @@ component Messages:
             }
          }
    }
+
    render() =
       var prev = null
       .messages %
          @state.messages each m ->
-            active = m.channel === @props.master.active-channel
+            active = m.channel === @props.view.active-channel
             result =
                div %
                   className = if{active, "active-message", "inactive-message"}
@@ -136,7 +138,6 @@ component Messages:
                   Message %
                      key = m.message-id
                      active = active
-                     master = @props.master
                      message = m
             prev = m
             result

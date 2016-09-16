@@ -1,6 +1,7 @@
 
 require:
-   .mixins -> MasterEvents
+   .mixins ->
+      MasterEvents, ViewEvents
    .message ->
       Messages
    .user ->
@@ -17,11 +18,11 @@ provide:
 
 
 component Tab:
-   mixins = {MasterEvents}
+   mixins = {ViewEvents}
    get-initial-state() = {
-      active = @props.master.active
+      active = @props.view.active
    }
-   events() = {
+   view-events() = {
       set-active(state) =
          @set-state with {active = state}
    }
@@ -29,8 +30,9 @@ component Tab:
       .tab-window %
          class-name = if{@state.active, .active, ""}
          Messages %
-            master = @props.master
+            view = @props.view
          Users %
-            master = @props.master
+            view = @props.view
          Input %
             master = @props.master
+            view = @props.view

@@ -3,6 +3,7 @@ require:
    lodash
    .mixins ->
       MasterEvents
+      ViewEvents
    ..utilities ->
       shorten
    ..kb ->
@@ -17,28 +18,28 @@ provide:
 
 
 component Input:
-   mixins = {MasterEvents}
+   mixins = {ViewEvents}
    get-initial-state() = {
       last-active = {=}
       tab-cycle = null
       cycle-index = 0
       text = ""
-      nickname = @props.master.active-nickname()
+      nickname = @props.view.active-nickname()
    }
 
    clear-cycle() =
       @set-state with {tab-cycle = null, cycle-index = 0}
 
    compute-cycle(cursor-position) =
-      to-cycle = @props.master.channels each ch when not ch.starts-with("/") -> ch
+      to-cycle = @props.view.channels each ch when not ch.starts-with("/") -> ch
       chs = lodash.sort-by(to-cycle) with
          ch ->
-            if @props.master.active-channel === ch:
+            if @props.view.active-channel === ch:
                "9999"
             else:
                @state.last-active[ch] or "0000"
       chs.reverse() each ch -> f where f() =
-         @props.master.set-active-channel(ch)
+         @props.view.set-active-channel(ch)
 
    cycle(direction = 1) =
       var idx = @state.cycle-index
@@ -54,28 +55,28 @@ component Input:
 
    cycle-group(match direction = 1) =
       do:
-         _views = @props.master.master.views
+         _views = @props.master.views
          views = neighbours(_views ++ _views[0...1])
-         @props.master.master.views
+         @props.master.views
       > 0 ->
          views each
-            {x, y} when x === @props.master ->
-               @props.master.master.activate(y)
+            {x, y} when x === @props.view ->
+               @props.master.activate(y)
                return
       < 0 ->
          views each
-            {x, y} when y === @props.master ->
-               @props.master.master.activate(x)
+            {x, y} when y === @props.view ->
+               @props.master.activate(x)
                return
 
-   events() = {
+   view-events() = {
       set-active-channel(channel) =
          @set-state with {
-            nickname = @props.master.active-nickname()
+            nickname = @props.view.active-nickname()
          }
       set-nickname(channel, name) =
          @set-state with {
-            nickname = @props.master.active-nickname()
+            nickname = @props.view.active-nickname()
          }
       add-message(m) =
          if m.type === .message:
@@ -113,12 +114,12 @@ component Input:
                e.prevent-default()
                match @state.text:
                   R"^/([^ ]+) ?(.*)"! {_, cmd, arg} ->
-                     @props.master.send with {
+                     @props.view.send with {
                         command = cmd
                         argument = arg
                      }
                   text ->
-                     @props.master.send with {
+                     @props.view.send with {
                         command = .say
                         argument = text
                      }

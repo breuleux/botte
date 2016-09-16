@@ -4,15 +4,26 @@ require:
 
 provide:
    PureRender
+   ViewEvents
    MasterEvents
 
 MasterEvents = {
    method component-will-mount() =
-      @__events = Object.assign(Object.create(null), @events())
-      items(@__events) each {ev, fn} ->
+      @__master-events = Object.assign(Object.create(null), @master-events())
+      items(@__master-events) each {ev, fn} ->
          @props.master.on(ev, fn)
    method component-will-unmount() =
-      items(@__events) each {ev, fn} ->
+      items(@__master-events) each {ev, fn} ->
          @props.master.remove-listener(ev, fn)
+}
+
+ViewEvents = {
+   method component-will-mount() =
+      @__view-events = Object.assign(Object.create(null), @view-events())
+      items(@__view-events) each {ev, fn} ->
+         @props.view.on(ev, fn)
+   method component-will-unmount() =
+      items(@__view-events) each {ev, fn} ->
+         @props.view.remove-listener(ev, fn)
 }
 

@@ -1,6 +1,7 @@
 
 require:
    .mixins ->
+      ViewEvents
       MasterEvents
    ..utilities ->
       SortedArray
@@ -23,7 +24,7 @@ component User:
 
 
 component Users:
-   mixins = {MasterEvents}
+   mixins = {ViewEvents}
    compute-users(users) =
       all-users = object with items(users) each {channel, _users} ->
          s = SortedArray(___, false) with
@@ -37,9 +38,9 @@ component Users:
             u -> {0*compute-level(u.modes), u.nickname.to-lower.case()}
    get-initial-state() = {
       active-channel = @props.active-channel
-      users = @compute-users(@props.master.users)
+      users = @compute-users(@props.view.users)
    }
-   events() = {
+   view-events() = {
       update-user(channel, u) =
          @get-for-channel(channel).add(u)
          @set-state with {
@@ -58,9 +59,10 @@ component Users:
    render() =
       .users %
          (@state.users[@state.active-channel or ""] or {}) each data ->
-            User % data
-            ;; l = compute-level(data.modes)
-            ;; span.user-name %
-            ;;    class-name = 'user-level-{l}'
-            ;;    data.nickname
+            ;; User %
+            ;;    data = data
+            l = compute-level(data.modes)
+            span.user-name %
+               class-name = 'user-level-{l}'
+               data.nickname
 

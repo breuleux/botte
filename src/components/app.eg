@@ -23,12 +23,14 @@ component ChatApp:
       view = view
       label =
          ChannelGroup %
-            master = view
+            master = @props.master
+            view = view
       contents =
          Tab %
-            master = view
+            master = @props.master
+            view = view
    }
-   events() = {
+   master-events() = {
       add-view(view) =
          is-first = @state.tabs.length === 0
          new-tab = @make-tab(view)
