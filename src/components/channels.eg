@@ -3,67 +3,199 @@ require:
    .mixins ->
       MasterEvents
       ViewEvents
+      ChannelEvents
+      PureRender
    ..utilities ->
       shorten
+   ..master ->
+      View2
 
 require-macros:
    earl-react ->
       %, component
 
 provide:
-   ChannelGroup
+   ;; ChannelGroup
+   ChannelSelector
+   SubChannelSelector
+   ChannelIndicator
 
 
-component ChannelGroup:
-   mixins = {ViewEvents}
+;; component ChannelGroup:
+;;    mixins = {ViewEvents}
+;;    get-initial-state() = {
+;;       selected = @props.view.active
+;;       label = @props.view.label()
+;;       channels = consume(@props.view.channels)
+;;       active-channel = @props.view.active-channel
+;;       talking = {=}
+;;    }
+;;    view-events() = {
+;;       set-active(state) =
+;;          @set-state with {selected = state}
+;;          if state:
+;;             @set-state with {talking = {=}, some-talking = false}
+;;       set-label(label) =
+;;          @set-state with {label = label}
+;;       add-channel(channel) =
+;;          @set-state with {channels = consume(@props.view.channels)}
+;;       remove-channel(channel) =
+;;          @set-state with {channels = consume(@props.view.channels)}
+;;       set-active-channel(channel) =
+;;          @set-state with {active-channel = channel}
+;;       add-message(m) =
+;;          if not @state.selected and m.type === .message and not @state.talking[m.channel]:
+;;             @set-state with {talking = @state.talking & {m.channel => .talking}
+;;                              some-talking = .talking}
+;;             set-timeout(___, 1000) with _ ->
+;;                @set-state with {talking = @state.talking & {m.channel => .talked}
+;;                                 some-talking = .talked}
+;;    }
+;;    render() =
+;;       .tab-group %
+;;          class-name = if{@state.selected, .selected, ""}
+;;          .tab-label %
+;;             class-name = if{@state.selected, .selected, ""}
+;;             .tab-label-activity %
+;;                class-name = @state.some-talking or 'not-talking'
+;;             shorten(@state.label)
+;;             on-click() =
+;;                if not @state.selected:
+;;                   @props.master.activate(@props.view)
+;;          @state.channels each
+;;             R"^/"? or (== @state.label) ->
+;;                continue
+;;             channel ->
+;;                .tab-channel %
+;;                   className = if{channel === @state.active-channel, .active, ""}
+;;                   .tab-channel-activity %
+;;                      class-name = @state.talking[channel] or 'not-talking'
+;;                   shorten(channel)
+;;                   on-click() =
+;;                      @props.master.activate(@props.view)
+;;                      @props.view.set-active-channel(channel)
+
+
+component ChannelSelector:
+   mixins = {MasterEvents}
+
    get-initial-state() = {
-      selected = @props.view.active
-      label = @props.view.label()
-      channels = consume(@props.view.channels)
-      active-channel = @props.view.active-channel
-      talking = {=}
+      views = consume(@props.master.views)
    }
-   view-events() = {
-      set-active(state) =
-         @set-state with {selected = state}
-         if state:
-            @set-state with {talking = {=}, some-talking = false}
-      set-label(label) =
-         @set-state with {label = label}
-      add-channel(channel) =
-         @set-state with {channels = consume(@props.view.channels)}
-      remove-channel(channel) =
-         @set-state with {channels = consume(@props.view.channels)}
-      set-active-channel(channel) =
-         @set-state with {active-channel = channel}
-      add-message(m) =
-         if not @state.selected and m.type === .message and not @state.talking[m.channel]:
-            @set-state with {talking = @state.talking & {m.channel => .talking}
-                             some-talking = .talking}
-            set-timeout(___, 1000) with _ ->
-               @set-state with {talking = @state.talking & {m.channel => .talked}
-                                some-talking = .talked}
+
+   master-events() = {
+      add-view(view) =
+         @set-state with {views = @state.views ++ {view}}
    }
+
    render() =
+      .tab-labels %
+         @state.views each view ->
+            SubChannelSelector %
+               master = @props.master
+               view = view
+
+
+component SubChannelSelector:
+   mixins = {ViewEvents, MasterEvents}
+
+   get-initial-state() = {
+      selected = @props.master.focus === @props.view
+      label = @props.view.label
+      channels = consume(@props.view.channels)
+      focus = @props.view.focus
+   }
+
+   master-events() = {
+      set-focus(view) =
+         @set-state with {selected = view === @props.view}
+   }
+
+   view-events() = {
+      add-channel(channel) =
+         @set-state with {channels = @state.channels ++ {channel}}
+      remove-channel(channel) =
+         @set-state with {channels = @state.channels each c when c !== channel -> c}
+      set-label(old-label, new-label) =
+         @set-state with {label = new-label}
+      set-focus(old-focus, new-focus) =
+         @set-state with {focus = new-focus}
+   }
+
+   render() =
+      head-channel = if{@state.label, @props.view, @state.focus}
+      if not head-channel:
+         return span % ""
       .tab-group %
          class-name = if{@state.selected, .selected, ""}
-         .tab-label %
-            class-name = if{@state.selected, .selected, ""}
-            .tab-label-activity %
-               class-name = @state.some-talking or 'not-talking'
-            shorten(@state.label)
-            on-click() =
-               if not @state.selected:
-                  @props.master.activate(@props.view)
-         @state.channels each
-            R"^/"? or (== @state.label) ->
-               continue
-            channel ->
-               .tab-channel %
-                  className = if{channel === @state.active-channel, .active, ""}
-                  .tab-channel-activity %
-                     class-name = @state.talking[channel] or 'not-talking'
-                  shorten(channel)
-                  on-click() =
-                     @props.master.activate(@props.view)
-                     @props.view.set-active-channel(channel)
+         ChannelIndicator %
+            class-name = 'tab-label'
+            channel = head-channel
+            view = @props.view
+            master = @props.master
+            perma-focus = @state.selected
+         @state.channels each ch when ch !== head-channel ->
+            ChannelIndicator %
+               class-name = 'tab-channel'
+               channel = ch
+               view = @props.view
+               master = @props.master
+               focus = (ch === @state.focus)
+
+
+component ChannelIndicator:
+   mixins = {ChannelEvents, ViewEvents, MasterEvents}
+
+   get-label() =
+      ch = @props.channel
+      ch.label or ch.short-name or ch.network
+
+   get-initial-state() = {
+      focus = @props.focus
+      label = @get-label()
+      talking = "not-talking"
+   }
+
+   master-events() = {
+      set-focus(view) =
+         if view === @props.view:
+            @set-state with {talking = "not-talking"}
+   }
+
+   view-events() = {
+      set-focus(_, channel) =
+         @set-state with {focus = channel === @props.channel}
+   }
+
+   channel-events() = {
+      rename(new-name) =
+         @set-state with {label = @get-label()}
+      add-messages(ms) =
+         if ms.length === 0:
+            return
+         if @props.master.focus === @props.view:
+            return
+         m = ms[ms.length - 1]
+         if m.type === .message:
+            @set-state with {talking = .talking}
+            set-timeout(___, 1000) with _ ->
+               @set-state with {talking = .talked}
+   }
+
+   render() =
+      selected = match @props.perma-focus:
+         undefined? -> @state.focus
+         v -> v
+      div %
+         class-name = {
+            @props.class-name
+            if{selected, "active selected", ""}
+         }.join(" ")
+         .tab-channel-activity %
+            class-name = @state.talking
+         @state.label
+         on-click() =
+            @props.master.emit(.set-focus, @props.view)
+            if not View2? @props.channel:
+               @props.view.set-focus(@props.channel)
+

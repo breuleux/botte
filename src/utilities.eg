@@ -122,6 +122,11 @@ class SortedArray:
          throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
       @
 
+   delete-all(elements) =
+      elements each element ->
+         @delete(element)
+      @
+
    find-index(element) =
       @_find-key-index(@key-function(element))[0]
 

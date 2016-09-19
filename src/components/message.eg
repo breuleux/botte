@@ -20,7 +20,9 @@ require-macros:
       %, component
 
 provide:
-   Message, Messages
+   Message
+   ;; Messages
+   Messages2
 
 color-cache = {=}
 
@@ -69,106 +71,248 @@ component Message:
 
 
 
-component Messages:
+;; component Messages:
+;;    mixins = {ViewEvents}
+
+;;    get-initial-state() = {
+;;       messages = @populate(@props.view.messages)
+;;       active-channel = @props.view.active-channel
+;;       now = moment()
+;;    }
+
+;;    populate(messages) =
+;;       s = SortedArray(___, false) with m -> m.start-time + " " + m.seq-id
+;;       s.populate(messages)
+
+;;    component-will-update() =
+;;       node = ReactDOM.findDOMNode(@)
+;;       @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight
+
+;;    component-did-update() =
+;;       if @at-bottom:
+;;          node = ReactDOM.findDOMNode(@)
+;;          node.scrollTop = node.scrollHeight
+
+;;    view-events() = {
+;;       ;; tick() =
+;;       ;;    @set-state with {
+;;       ;;       now = moment()
+;;       ;;    }
+
+;;       set-active-channel(ch) =
+;;          @set-state with {
+;;             active-channel = ch
+;;          }
+
+;;       add-message(m) =
+;;          @set-state with {
+;;             messages = @state.messages.add(m)
+;;          }
+      
+;;       delete-message(m) =
+;;          @set-state with {
+;;             messages = @state.messages.delete(m)
+;;          }
+
+;;       error(channel, msg, error) =
+;;          @set-state with {
+;;             messages = @state.messages ++ {err} where err = {
+;;                type = .error
+;;                message = msg
+;;                error = error
+;;             }
+;;          }
+;;    }
+
+;;    render() =
+;;       var prev = null
+;;       .messages %
+;;          @state.messages each m ->
+;;             active = m.channel === @props.view.active-channel
+;;             result =
+;;                div %
+;;                   className = if{active, "active-message", "inactive-message"}
+;;                   ;; if prev and false:
+;;                   ;;    Intercalary %
+;;                   ;;       threshold = 5
+;;                   ;;       message1 = prev
+;;                   ;;       message2 = m
+;;                   Message %
+;;                      key = m.message-id
+;;                      active = active
+;;                      message = m
+;;             prev = m
+;;             result
+;;          ;; if prev and false:
+;;          ;;    Intercalary %
+;;          ;;       threshold = 5
+;;          ;;       message1 = prev
+;;          ;;       message2 = {time = @state.now}
+
+;;       ;; var prev = null
+;;       ;; .messages %
+;;       ;;    @state.messages each m ->
+;;       ;;       curr = mom(m.time)
+;;       ;;       diff = if{prev, Math.abs(prev.diff(curr)), 0}
+;;       ;;       prev = curr
+;;       ;;       result = Message %
+;;       ;;          key = m.message-id
+;;       ;;          master = @props.master
+;;       ;;          message = m
+;;       ;;       if diff > 5000:
+;;       ;;          div %
+;;       ;;             .inactivity-period %
+;;       ;;                String{'{diff // 1000} seconds of inactivity'}
+;;       ;;             result
+;;       ;;       else:
+;;       ;;          result
+;;       ;;    do:
+;;       ;;       diff = Math.abs(prev.diff(moment()))
+;;       ;;       if diff > 5000:
+;;       ;;          .inactivity-period %
+;;       ;;             String{'{diff // 1000} seconds of inactivity'}
+;;       ;;       else:
+;;       ;;          ""
+
+
+
+
+
+
+
+MessageArray(messages) =
+   s = SortedArray(___, false) with
+      m -> m.start-time + " " + m.seq-id
+   s.populate(messages)
+
+
+component Messages2:
    mixins = {ViewEvents}
 
    get-initial-state() = {
-      messages = @populate(@props.view.messages)
-      active-channel = @props.view.active-channel
-      now = moment()
+      focus = @props.view.focus??.full-name
+      messages = MessageArray(@props.view.focus??.messages or {})
    }
 
-   populate(messages) =
-      s = SortedArray(___, false) with m -> m.start-time + " " + m.seq-id
-      s.populate(messages)
-
-   component-will-update() =
-      node = ReactDOM.findDOMNode(@)
-      @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight
-
-   component-did-update() =
-      if @at-bottom:
-         node = ReactDOM.findDOMNode(@)
-         node.scrollTop = node.scrollHeight
-
    view-events() = {
-      ;; tick() =
-      ;;    @set-state with {
-      ;;       now = moment()
-      ;;    }
-
-      set-active-channel(ch) =
-         @set-state with {
-            active-channel = ch
-         }
-
-      add-message(m) =
-         @set-state with {
-            messages = @state.messages.add(m)
-         }
-      
-      delete-message(m) =
-         @set-state with {
-            messages = @state.messages.delete(m)
-         }
-
-      error(channel, msg, error) =
-         @set-state with {
-            messages = @state.messages ++ {err} where err = {
-               type = .error
-               message = msg
-               error = error
-            }
-         }
+      set-focus(_, channel) =
+         @set-state with {focus = channel??.full-name}
+      add-messages(ms) =
+         @set-state with {messages = @state.messages.add-all(ms)}
+      delete-messages(ms) =
+         @set-state with {messages = @state.messages.delete-all(ms)}
    }
 
    render() =
-      var prev = null
       .messages %
          @state.messages each m ->
-            active = m.channel === @props.view.active-channel
+            active = m.channel === @state.focus
             result =
                div %
                   className = if{active, "active-message", "inactive-message"}
-                  ;; if prev and false:
-                  ;;    Intercalary %
-                  ;;       threshold = 5
-                  ;;       message1 = prev
-                  ;;       message2 = m
                   Message %
                      key = m.message-id
                      active = active
                      message = m
-            prev = m
             result
-         ;; if prev and false:
-         ;;    Intercalary %
-         ;;       threshold = 5
-         ;;       message1 = prev
-         ;;       message2 = {time = @state.now}
 
-      ;; var prev = null
-      ;; .messages %
-      ;;    @state.messages each m ->
-      ;;       curr = mom(m.time)
-      ;;       diff = if{prev, Math.abs(prev.diff(curr)), 0}
-      ;;       prev = curr
-      ;;       result = Message %
-      ;;          key = m.message-id
-      ;;          master = @props.master
-      ;;          message = m
-      ;;       if diff > 5000:
-      ;;          div %
-      ;;             .inactivity-period %
-      ;;                String{'{diff // 1000} seconds of inactivity'}
-      ;;             result
-      ;;       else:
-      ;;          result
-      ;;    do:
-      ;;       diff = Math.abs(prev.diff(moment()))
-      ;;       if diff > 5000:
-      ;;          .inactivity-period %
-      ;;             String{'{diff // 1000} seconds of inactivity'}
-      ;;       else:
-      ;;          ""
+   ;; get-initial-state() = {
+   ;;    messages = @populate(@props.view.messages)
+   ;;    active-channel = @props.view.active-channel
+   ;;    now = moment()
+   ;; }
+
+   ;; populate(messages) =
+   ;;    s = SortedArray(___, false) with m -> m.start-time + " " + m.seq-id
+   ;;    s.populate(messages)
+
+   ;; component-will-update() =
+   ;;    node = ReactDOM.findDOMNode(@)
+   ;;    @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight
+
+   ;; component-did-update() =
+   ;;    if @at-bottom:
+   ;;       node = ReactDOM.findDOMNode(@)
+   ;;       node.scrollTop = node.scrollHeight
+
+   ;; view-events() = {
+   ;;    ;; tick() =
+   ;;    ;;    @set-state with {
+   ;;    ;;       now = moment()
+   ;;    ;;    }
+
+   ;;    set-active-channel(ch) =
+   ;;       @set-state with {
+   ;;          active-channel = ch
+   ;;       }
+
+   ;;    add-message(m) =
+   ;;       @set-state with {
+   ;;          messages = @state.messages.add(m)
+   ;;       }
+      
+   ;;    delete-message(m) =
+   ;;       @set-state with {
+   ;;          messages = @state.messages.delete(m)
+   ;;       }
+
+   ;;    error(channel, msg, error) =
+   ;;       @set-state with {
+   ;;          messages = @state.messages ++ {err} where err = {
+   ;;             type = .error
+   ;;             message = msg
+   ;;             error = error
+   ;;          }
+   ;;       }
+   ;; }
+
+   ;; render() =
+   ;;    var prev = null
+   ;;    .messages %
+   ;;       @state.messages each m ->
+   ;;          active = m.channel === @props.view.active-channel
+   ;;          result =
+   ;;             div %
+   ;;                className = if{active, "active-message", "inactive-message"}
+   ;;                ;; if prev and false:
+   ;;                ;;    Intercalary %
+   ;;                ;;       threshold = 5
+   ;;                ;;       message1 = prev
+   ;;                ;;       message2 = m
+   ;;                Message %
+   ;;                   key = m.message-id
+   ;;                   active = active
+   ;;                   message = m
+   ;;          prev = m
+   ;;          result
+   ;;       ;; if prev and false:
+   ;;       ;;    Intercalary %
+   ;;       ;;       threshold = 5
+   ;;       ;;       message1 = prev
+   ;;       ;;       message2 = {time = @state.now}
+
+   ;;    ;; var prev = null
+   ;;    ;; .messages %
+   ;;    ;;    @state.messages each m ->
+   ;;    ;;       curr = mom(m.time)
+   ;;    ;;       diff = if{prev, Math.abs(prev.diff(curr)), 0}
+   ;;    ;;       prev = curr
+   ;;    ;;       result = Message %
+   ;;    ;;          key = m.message-id
+   ;;    ;;          master = @props.master
+   ;;    ;;          message = m
+   ;;    ;;       if diff > 5000:
+   ;;    ;;          div %
+   ;;    ;;             .inactivity-period %
+   ;;    ;;                String{'{diff // 1000} seconds of inactivity'}
+   ;;    ;;             result
+   ;;    ;;       else:
+   ;;    ;;          result
+   ;;    ;;    do:
+   ;;    ;;       diff = Math.abs(prev.diff(moment()))
+   ;;    ;;       if diff > 5000:
+   ;;    ;;          .inactivity-period %
+   ;;    ;;             String{'{diff // 1000} seconds of inactivity'}
+   ;;    ;;       else:
+   ;;    ;;          ""
 

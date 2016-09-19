@@ -6,24 +6,55 @@ provide:
    PureRender
    ViewEvents
    MasterEvents
+   ChannelEvents
 
-MasterEvents = {
+from-field(field) =
+   private-field = '__{field}Events'
+   public-field = '{field}Events'
+   {
+      method component-will-mount() =
+         pubf = @[public-field]
+         @[private-field] = Object.assign(Object.create(null), pubf())
+         items(@[private-field]) each {ev, fn} ->
+            @props[field].on(ev, fn)
+      method component-will-unmount() =
+         items(@[private-field]) each {ev, fn} ->
+            @props[field].remove-listener(ev, fn)
+   }
+
+MasterEvents = from-field(.master)
+ViewEvents = from-field(.view)
+ChannelEvents = from-field(.channel)
+
+DebounceTimer = {
+   method schedule-interval(name = .default, time, fn) =
+      pass
+   method schedule-once(name = .default, time, fn) =
+      pass
    method component-will-mount() =
-      @__master-events = Object.assign(Object.create(null), @master-events())
-      items(@__master-events) each {ev, fn} ->
-         @props.master.on(ev, fn)
+      pass
    method component-will-unmount() =
-      items(@__master-events) each {ev, fn} ->
-         @props.master.remove-listener(ev, fn)
+      pass
 }
 
-ViewEvents = {
-   method component-will-mount() =
-      @__view-events = Object.assign(Object.create(null), @view-events())
-      items(@__view-events) each {ev, fn} ->
-         @props.view.on(ev, fn)
-   method component-will-unmount() =
-      items(@__view-events) each {ev, fn} ->
-         @props.view.remove-listener(ev, fn)
-}
 
+
+;; MasterEvents = {
+;;    method component-will-mount() =
+;;       @__master-events = Object.assign(Object.create(null), @master-events())
+;;       items(@__master-events) each {ev, fn} ->
+;;          @props.master.on(ev, fn)
+;;    method component-will-unmount() =
+;;       items(@__master-events) each {ev, fn} ->
+;;          @props.master.remove-listener(ev, fn)
+;; }
+
+;; ViewEvents = {
+;;    method component-will-mount() =
+;;       @__view-events = Object.assign(Object.create(null), @view-events())
+;;       items(@__view-events) each {ev, fn} ->
+;;          @props.view.on(ev, fn)
+;;    method component-will-unmount() =
+;;       items(@__view-events) each {ev, fn} ->
+;;          @props.view.remove-listener(ev, fn)
+;; }

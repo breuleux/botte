@@ -14,32 +14,156 @@ require-macros:
       %, component
 
 provide:
-   Input
+   ;; Input
+   Input2
 
 
-component Input:
+;; component Input:
+;;    mixins = {ViewEvents}
+;;    get-initial-state() = {
+;;       last-active = {=}
+;;       tab-cycle = null
+;;       cycle-index = 0
+;;       text = ""
+;;       nickname = @props.view.active-nickname()
+;;    }
+
+;;    clear-cycle() =
+;;       @set-state with {tab-cycle = null, cycle-index = 0}
+
+;;    compute-cycle(cursor-position) =
+;;       to-cycle = @props.view.channels each ch when not ch.starts-with("/") -> ch
+;;       chs = lodash.sort-by(to-cycle) with
+;;          ch ->
+;;             if @props.view.active-channel === ch:
+;;                "9999"
+;;             else:
+;;                @state.last-active[ch] or "0000"
+;;       chs.reverse() each ch -> f where f() =
+;;          @props.view.set-active-channel(ch)
+
+;;    cycle(direction = 1) =
+;;       var idx = @state.cycle-index
+;;       var cyc = @state.tab-cycle
+;;       if not cyc:
+;;          cyc = @compute-cycle("")
+;;       next-idx = (idx + direction + cyc.length) mod cyc.length
+;;       cyc[next-idx]()
+;;       if next-idx === 0:
+;;          @clear-cycle()
+;;       else:
+;;          @set-state with {tab-cycle = cyc, cycle-index = next-idx}
+
+;;    cycle-group(match direction = 1) =
+;;       do:
+;;          _views = @props.master.views
+;;          views = neighbours(_views ++ _views[0...1])
+;;          @props.master.views
+;;       > 0 ->
+;;          views each
+;;             {x, y} when x === @props.view ->
+;;                @props.master.activate(y)
+;;                return
+;;       < 0 ->
+;;          views each
+;;             {x, y} when y === @props.view ->
+;;                @props.master.activate(x)
+;;                return
+
+;;    view-events() = {
+;;       set-active-channel(channel) =
+;;          @set-state with {
+;;             nickname = @props.view.active-nickname()
+;;          }
+;;       set-nickname(channel, name) =
+;;          @set-state with {
+;;             nickname = @props.view.active-nickname()
+;;          }
+;;       add-message(m) =
+;;          if m.type === .message:
+;;             @set-state with {
+;;                last-active = @state.last-active & {m.channel => m.time}
+;;             }
+;;    }
+
+;;    render() =
+;;       interactor = Interactor({=})
+;;       interactor.set-bindings with {
+;;          "Tab"() =
+;;             @cycle(1)
+;;          "S-Tab"() =
+;;             @cycle(-1)
+;;          "C-Tab"() =
+;;             @cycle-group(1)
+;;          "C-S-Tab"() =
+;;             @cycle-group(-1)
+;;          "Up"() =
+;;             print "up"
+;;          "Down"() =
+;;             print "down"
+;;          "S-Up"() =
+;;             print "Sup"
+;;          "S-Down"() =
+;;             print "Sdown"
+;;       }
+
+;;       .interact %
+;;          span.own-nickname %
+;;             @state.nickname
+;;          form %
+;;             on-submit(e) =
+;;                e.prevent-default()
+;;                match @state.text:
+;;                   R"^/([^ ]+) ?(.*)"! {_, cmd, arg} ->
+;;                      @props.view.send with {
+;;                         command = cmd
+;;                         argument = arg
+;;                      }
+;;                   text ->
+;;                      @props.view.send with {
+;;                         command = .say
+;;                         argument = text
+;;                      }
+;;                @set-state with {text = ""}
+;;             input.chat-input %
+;;                ref(elem) =
+;;                   if elem:
+;;                      elem.focus()
+;;                value = @state.text
+;;                on-change(e) =
+;;                   @set-state with {text = e.target.value}
+;;                on-key-down(e) =
+;;                   interactor.keydown(e)
+;;                on-key-up(e) =
+;;                   interactor.keyup(e)
+
+
+
+
+
+component Input2:
    mixins = {ViewEvents}
    get-initial-state() = {
       last-active = {=}
       tab-cycle = null
       cycle-index = 0
       text = ""
-      nickname = @props.view.active-nickname()
+      nickname = @props.view.focus??.nickname or "??"
    }
 
    clear-cycle() =
       @set-state with {tab-cycle = null, cycle-index = 0}
 
    compute-cycle(cursor-position) =
-      to-cycle = @props.view.channels each ch when not ch.starts-with("/") -> ch
+      to-cycle = consume(@props.view.channels)
       chs = lodash.sort-by(to-cycle) with
          ch ->
-            if @props.view.active-channel === ch:
+            if @props.view.focus === ch:
                "9999"
             else:
-               @state.last-active[ch] or "0000"
+               @state.last-active[ch.full-name] or "0000"
       chs.reverse() each ch -> f where f() =
-         @props.view.set-active-channel(ch)
+         @props.view.set-focus(ch)
 
    cycle(direction = 1) =
       var idx = @state.cycle-index
@@ -61,24 +185,27 @@ component Input:
       > 0 ->
          views each
             {x, y} when x === @props.view ->
-               @props.master.activate(y)
+               @props.master.set-focus(y)
                return
       < 0 ->
          views each
             {x, y} when y === @props.view ->
-               @props.master.activate(x)
+               @props.master.set-focus(x)
                return
 
    view-events() = {
-      set-active-channel(channel) =
+      set-focus(_, channel) =
          @set-state with {
-            nickname = @props.view.active-nickname()
+            nickname = channel??.nickname or "??"
          }
-      set-nickname(channel, name) =
+      set-nickname(_, name) =
          @set-state with {
-            nickname = @props.view.active-nickname()
+            nickname = name
          }
-      add-message(m) =
+      add-messages(ms) =
+         if ms.length === 0:
+            return
+         m = ms[ms.length - 1]
          if m.type === .message:
             @set-state with {
                last-active = @state.last-active & {m.channel => m.time}

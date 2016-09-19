@@ -2,51 +2,133 @@
 require:
    .mixins -> MasterEvents
    .channels ->
-      ChannelGroup
+      ;; ChannelGroup
+      ChannelSelector
    .tab ->
-      Tab
+      ;; Tab
+      Tab2
 
 require-macros:
    earl-react ->
       %, component
 
 provide:
-   ChatApp
+   ;; ChatApp
+   ChatApp2
 
 
-component ChatApp:
+;; component ChatApp:
+;;    mixins = {MasterEvents}
+;;    get-initial-state() = {
+;;       tabs = @props.master.views each view -> @make-tab(view)
+;;    }
+;;    make-tab(view) = {
+;;       view = view
+;;       label =
+;;          ChannelGroup %
+;;             master = @props.master
+;;             view = view
+;;       contents =
+;;          Tab %
+;;             master = @props.master
+;;             view = view
+;;    }
+;;    master-events() = {
+;;       add-view(view) =
+;;          is-first = @state.tabs.length === 0
+;;          new-tab = @make-tab(view)
+;;          @set-state with {tabs = @state.tabs ++ {new-tab}}
+;;          if is-first:
+;;             @props.master.activate(view)
+
+;;       remove-view(view) =
+;;          @set-state with {
+;;             tabs = @state.tabs each tab when tab.view !== view -> tab
+;;          }
+;;    }
+
+;;    render() =
+;;       .main-window %
+;;          .tab-labels %
+;;             @state.tabs each {=> label} -> label
+;;          .tab-area %
+;;             @state.tabs each {=> contents} -> contents
+
+
+
+
+
+component ChatApp2:
+
    mixins = {MasterEvents}
-   get-initial-state() = {
-      tabs = @props.master.views each view -> @make-tab(view)
-   }
-   make-tab(view) = {
-      view = view
-      label =
-         ChannelGroup %
-            master = @props.master
-            view = view
-      contents =
-         Tab %
-            master = @props.master
-            view = view
-   }
-   master-events() = {
-      add-view(view) =
-         is-first = @state.tabs.length === 0
-         new-tab = @make-tab(view)
-         @set-state with {tabs = @state.tabs ++ {new-tab}}
-         if is-first:
-            @props.master.activate(view)
 
+   get-initial-state() = {
+      views = clone(@props.master.views)
+      focus = null
+   }
+
+   component-will-mount() =
+      if not @state.focus and @state.views.length > 0:
+         @props.master.emit(.activate, @state.views[0])
+
+   master-events() = {
+      activate(view) =
+         @set-state with {focus = view}
+      add-view(view) =
+         is-first = @state.views.length === 0
+         @set-state with {views = @state.views ++ {view}}
+         if is-first:
+            @props.master.emit(.activate, view)
       remove-view(view) =
          @set-state with {
-            tabs = @state.tabs each tab when tab.view !== view -> tab
+            tabs = @state.tabs each v when v !== view -> v
          }
    }
 
    render() =
       .main-window %
-         .tab-labels %
-            @state.tabs each {=> label} -> label
+         ChannelSelector %
+            master = @props.master
          .tab-area %
-            @state.tabs each {=> contents} -> contents
+            @state.views each view ->
+               Tab2 %
+                  active = (@state.focus === view)
+                  master = @props.master
+                  view = view
+
+
+   ;; mixins = {MasterEvents}
+   ;; get-initial-state() = {
+   ;;    tabs = @props.master.views each view -> @make-tab(view)
+   ;; }
+   ;; make-tab(view) = {
+   ;;    view = view
+   ;;    label =
+   ;;       ChannelGroup %
+   ;;          master = @props.master
+   ;;          view = view
+   ;;    contents =
+   ;;       Tab %
+   ;;          master = @props.master
+   ;;          view = view
+   ;; }
+   ;; master-events() = {
+   ;;    add-view(view) =
+   ;;       is-first = @state.tabs.length === 0
+   ;;       new-tab = @make-tab(view)
+   ;;       @set-state with {tabs = @state.tabs ++ {new-tab}}
+   ;;       if is-first:
+   ;;          @props.master.activate(view)
+
+   ;;    remove-view(view) =
+   ;;       @set-state with {
+   ;;          tabs = @state.tabs each tab when tab.view !== view -> tab
+   ;;       }
+   ;; }
+
+   ;; render() =
+   ;;    .main-window %
+   ;;       .tab-labels %
+   ;;          @state.tabs each {=> label} -> label
+   ;;       .tab-area %
+   ;;          @state.tabs each {=> contents} -> contents

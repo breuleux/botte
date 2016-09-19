@@ -12,7 +12,9 @@ require-macros:
       %, component
 
 provide:
-   User, Users
+   User
+   ;; Users
+   Users2
 
 
 component User:
@@ -23,44 +25,79 @@ component User:
          @props.data.nickname
 
 
-component Users:
+;; component Users:
+;;    mixins = {ViewEvents}
+;;    compute-users(users) =
+;;       all-users = object with items(users) each {channel, _users} ->
+;;          s = SortedArray(___, false) with
+;;             u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
+;;          s.populate(items(_users) each {name, u} -> u)
+;;          {channel, s}
+;;       all-users
+;;    get-for-channel(channel) =
+;;       @state.users[channel] or=
+;;          SortedArray(___, false) with
+;;             u -> {0*compute-level(u.modes), u.nickname.to-lower.case()}
+;;    get-initial-state() = {
+;;       active-channel = @props.active-channel
+;;       users = @compute-users(@props.view.users)
+;;    }
+;;    view-events() = {
+;;       update-user(channel, u) =
+;;          @get-for-channel(channel).add(u)
+;;          @set-state with {
+;;             users = @state.users
+;;          }
+;;       remove-user(channel, u) =
+;;          @get-for-channel(channel).delete(u)
+;;          @set-state with {
+;;             users = @state.users
+;;          }
+;;       set-active-channel(channel) =
+;;          @set-state with {
+;;             active-channel = channel
+;;          }
+;;    }
+;;    render() =
+;;       .users %
+;;          (@state.users[@state.active-channel or ""] or {}) each data ->
+;;             ;; User %
+;;             ;;    data = data
+;;             l = compute-level(data.modes)
+;;             span.user-name %
+;;                class-name = 'user-level-{l}'
+;;                data.nickname
+
+
+UserArray(users) =
+   s = SortedArray(___, false) with
+      u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
+   s.populate(users)
+
+component Users2:
    mixins = {ViewEvents}
-   compute-users(users) =
-      all-users = object with items(users) each {channel, _users} ->
-         s = SortedArray(___, false) with
-            u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
-         s.populate(items(_users) each {name, u} -> u)
-         {channel, s}
-      all-users
-   get-for-channel(channel) =
-      @state.users[channel] or=
-         SortedArray(___, false) with
-            u -> {0*compute-level(u.modes), u.nickname.to-lower.case()}
+
    get-initial-state() = {
-      active-channel = @props.active-channel
-      users = @compute-users(@props.view.users)
+      users = UserArray with
+         if @props.view.focus as ch:
+            then: items(ch.users) each {k, v} -> v, {}
+            else: {}
    }
+
    view-events() = {
-      update-user(channel, u) =
-         @get-for-channel(channel).add(u)
+      add-users(us) =
          @set-state with {
-            users = @state.users
+            users = @state.users.add-all(us)
          }
-      remove-user(channel, u) =
-         @get-for-channel(channel).delete(u)
+      delete-users(us) =
          @set-state with {
-            users = @state.users
-         }
-      set-active-channel(channel) =
-         @set-state with {
-            active-channel = channel
+            users = @state.users.delete-all(us)
          }
    }
+
    render() =
       .users %
-         (@state.users[@state.active-channel or ""] or {}) each data ->
-            ;; User %
-            ;;    data = data
+         @state.users each data ->
             l = compute-level(data.modes)
             span.user-name %
                class-name = 'user-level-{l}'

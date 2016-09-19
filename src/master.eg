@@ -11,8 +11,11 @@ require:
       message-mergers
 
 provide:
-   View
-   Dispatcher
+   Channel
+   View2
+   Dispatcher2
+   ;; View
+   ;; Dispatcher
 
 
 var __id = 0
@@ -20,127 +23,88 @@ next-id() =
    __id += 1
 
 
-class View < EventEmitter:
+class Channel < EventEmitter:
 
-   constructor(@_label, channels, @transformers, @mergers) =
-      @active = false
-      @active-channel = null
-      @max-size = 1000
-      @messages = {}
+   constructor(@master, full-name, @transformers, @mergers) =
+      @set-max-listeners(0)
+      @_rename(full-name)
+      @nickname = null
       @users = {=}
-      @own-names = {=}
-      @channels = new Set()
-      set-interval(fn, 1000) where fn() =
-         @emit(.tick)
-      channels each c ->
-         @add-channel(c)
+      @messages = {}
+
+   ;; What goes here
+
+   accepts(m) =
+      ;; match @matcher:
+      ;;    null? ->
+      ;;       m.channel === @full-name
+      ;;    RegExp? ->
+      ;;       @matcher? m.channel
+      ;;    else ->
+      ;;       throw E.bad-matcher(@matcher)
+      m.channel === @full-name
+
+   ;; Channel name
+
+   _rename(@full-name) =
+      @network = get-network(@full-name)
+      @short-name = get-channel(@full-name)
+
+   rename(new-full-name) =
+      @_rename(new-full-name)
+      @emit(.rename, new-full-name)
 
    ;; Own nickname
 
-   active-nickname() =
-      @own-names[@active-channel or ""] or ""
-
-   set-nickname(channel, name) =
-      @own-names[channel] = name
-      @emit(.set-nickname, channel, name)
-
-   ;; Group label
-
-   label() =
-      @_label or @active-channel or "??"
-
-   set-label(@_label) =
-      @emit(.set-label, @label())
-
-   ;; Activity
-
-   set-active(@active = true) =
-      @emit(.set-active, @active)
-
-   set-active-channel(@active-channel) =
-      @emit(.set-active-channel, @active-channel)
-      if not @_label:
-         @emit(.set-label, @label())
-
-   ;; Channels
-
-   accepts(m) =
-      @channels.has(m.channel) or (@active and @channels.has('/{m.type}'))
-
-   add-channel(channel) =
-      if not @channels.has(channel):
-         @users[channel] = {=}
-         @channels.add(channel)
-         @emit(.add-channel, channel)
-      if @channels.size === 1:
-         @set-active-channel(channel)
-
-   remove-channel(channel) =
-      if @channels.has(channel):
-         delete @users[channel]
-         @channels.delete(channel)
-         @emit(.remove-channel, channel)
-      if @active-channel === channel:
-         @set-active-channel(null)
-
-   move-channel(channel, new-channel) =
-      if @channels.has(channel):
-         @users[new-channel] = @users[channel]
-         delete @users[channel]
-         @channels.delete(channel)
-         @channels.add(new-channel)
-         @emit(.move-channel, channel, new-channel)
-         if @active-channel === channel:
-            @set-active-channel(new-channel)
+   set-nickname(new-name) =
+      @emit(.set-nickname, @nickname, new-name)
+      @nickname = new-name
 
    ;; Users
 
-   remove-user(channel, name) =
-      chu = @users[channel]
-      if chu[name] as u:
-         @emit(.remove-user, channel, u)
-         delete chu[name]
+   delete-user(name) =
+      if @users[name] as u:
+         @emit(.delete-users, {u})
+         delete @users[name]
 
-   update-user(channel, name, u) =
-      chu = @users[channel]
-      chu[name] = u
-      @emit(.update-user, channel, u)
+   add-user(name, u) =
+      @users[name] = u
+      @emit(.add-users, {u})
 
-   with-user(channel, _name, fn) =
+   with-user(_name, fn) =
       name = _name or "#"
-      network = get-network(channel)
-      chu = @users[channel]
-      u = chu[name] or {
+      u = @users[name] or {
          nickname = name
          modes = new Set()
       }
       match fn(u):
          false? ->
-            @remove-user(channel, name)
+            @delete-user(name)
          u when u.nickname !== name ->
-            @remove-user(channel, name)
-            @update-user(channel, u.nickname, u)
-            @move-channel with
-               {network, name}.join("/")
-               {network, u.nickname}.join("/")
+            @delete-user(name)
+            @add-user(u.nickname, u)
+            if name === @short-name:
+               @rename(u.nickname)
          u ->
-            @update-user(channel, name, u)
+            @add-user(name, u)
+
+   ;; Messages
 
    update-from-message(m) =
-      channel = m.channel
+      ;; channel = m.channel
       match m.type:
 
          .nick ->
-            if not m.from or m.from === @own-names[channel]:
-               @set-nickname(channel, m.to)
-            @with-user(channel, m.from) with u ->
+            if not m.from or m.from === @nickname:
+               @set-nickname(m.to)
+            @with-user(m.from) with u ->
                u & {nickname = m.to}
 
          .names ->
-            to-delete = new Set with keys(@users[channel])
+            to-delete = new Set with keys(@users)
             items(m.content) each {nickname, data} ->
                to-delete.delete(nickname)
-               @with-user(channel, nickname) with u ->
+               @with-user(nickname) with u ->
                   s = u.modes
                   data.operator-level each
                      "~" -> s.add("q")
@@ -151,23 +115,25 @@ class View < EventEmitter:
                      other -> pass
                   u
             to-delete each name ->
-               @remove-user(channel, name)
+               @delete-user(name)
 
          .join ->
-            @with-user(channel, m.agent) with u -> u
+            @with-user(m.agent) with u -> u
             if m.self:
-               @set-nickname(channel, m.agent)
+               @set-nickname(m.agent)
 
          .part or .quit ->
-            @remove-user(channel, m.agent)
+            @delete-user(m.agent)
 
          .add-mode when R"[vhoaq]"? m.mode ->
-            @with-user(channel, m.argument) with u ->
+            @with-user(m.argument) with u ->
+               ;; TODO: make functional
                u.modes.add(m.mode)
                u
 
          .remove-mode when R"[vhoaq]"? m.mode ->
-            @with-user(channel, m.argument) with u ->
+            @with-user(m.argument) with u ->
+               ;; TODO: make functional
                u.modes.delete(m.mode)
                u
 
@@ -216,27 +182,22 @@ class View < EventEmitter:
 
    append-message(m) =
       @messages.push(m)
-      @emit(.add-message, m)
+      @emit(.add-messages, {m})
 
    insert-message(m, i) =
       @messages.splice(i, 0, m)
-      @emit(.add-message, m)
-
-   pop-message() =
-      @emit(.delete-message, @messages.pop())
+      @emit(.add-messages, {m})
 
    delete-message(i) =
-      @emit(.delete-message, @messages.splice(i, 1)[0])
+      @emit(.delete-messages, @messages.splice(i, 1))
 
    find-latch(m) =
-      ml = @messages.length
-      var n = ml - 1
-      while n > ml - 20:
-         m2 = @messages[n]
-         if m2 and m.channel === m2.channel:
-            return n
-         n -= 1
-      return null
+      ;; This can be used to make slight adjustments to message order
+      ;; by not necessarily merging a message with the very latest
+      if @messages.length === 0:
+         null
+      else:
+         @messages.length - 1
 
    incorporate-message(m, orig = @messages.length) =
       idx = @find-latch(m)
@@ -266,48 +227,144 @@ class View < EventEmitter:
    ;; Sending
 
    send(m) =
-      m.channel = @active-channel
+      ;; if @matcher:
+      ;;    throw E.cannot-send(@full-name)
+      ;; else:
+      m.channel = @full-name
       @master.send(m)
 
 
 
-class Dispatcher < EventEmitter:
+class View2 < EventEmitter:
+
+   constructor(@master, @label = null, @matcher = null) =
+      @set-max-listeners(0)
+      @channels = new Set()
+      @focus = null
+      @nickname = null
+
+      ;; Event handlers to install on focus
+      @focus-event-handlers = {
+         set-nickname(old, new) =
+            @emit(.set-nickname, old, new)
+            @nickname = new
+         add-users(us) =
+            @emit(.add-users, us)
+         delete-users(us) =
+            @emit(.delete-users, us)
+      }
+
+      @general-event-handlers = {
+         add-messages(ms) =
+            @emit(.add-messages, ms)
+         delete-messages(ms) =
+            @emit(.delete-messages, ms)
+      }
+
+   set-label(new-label) =
+      @emit(.set-label, @label, new-label)
+      @label = new-label
+
+   accepts(channel) =
+      match @matcher:
+         null? -> false
+         RegExp? r -> r? channel.full-name
+         Array? a -> a.index-of(channel.full-name) !== -1
+      ;; @matcher and @matcher? channel.full-name
+
+   empty() =
+      @channels.size === 0
+
+   unset-focus() =
+      if @focus:
+         items(@focus-event-handlers) each {name, fn} ->
+            @focus.remove-listener(name, fn)
+         @emit(.delete-users, items(@focus.users) each {_, u} -> u)
+      @nickname and @focus = null
+
+   set-focus(channel) =
+      if @focus === channel:
+         return
+      @emit(.set-focus, @focus, channel)
+      @unset-focus()
+      if channel:
+         items(@focus-event-handlers) each {name, fn} ->
+            channel.on(name, fn)
+         @emit(.add-users, items(channel.users) each {_, u} -> u)
+         @focus = channel
+         @emit(.set-nickname, null, @focus.nickname)
+         @nickname = @focus.nickname
+
+   add-channel(channel) =
+      @emit(.add-channel, channel)
+      items(@general-event-handlers) each {name, fn} ->
+         channel.on(name, fn)
+      @channels.add(channel)
+      @emit(.add-messages, channel.messages)
+      if @focus === null:
+         @set-focus(channel)
+
+   remove-channel(channel) =
+      @emit(.remove-channel, channel)
+      items(@general-event-handlers) each {name, fn} ->
+         channel.remove-listener(name, fn)
+      @emit(.delete-messages, channel.messages)
+      @channels.remove(channel)
+      if @focus === channel:
+         @set-focus(null)
+
+   send(m) =
+      @focus.send(m)
+
+
+class Dispatcher2 < EventEmitter:
 
    constructor(@source) =
+      @set-max-listeners(0)
+      @channels = {=}
       @views = {}
+      @focus = null
       set-interval(fn, 1000) where fn() =
          @emit(.tick)
 
-   activate(view) =
-      @views each match v ->
-         when v === view ->
-            v.set-active(true)
-         else ->
-            v.set-active(false)
+   set-focus(@focus) =
+      @emit(.set-focus, @focus)
 
    view-trigger(m) =
-      m.type in {.notice, .join, .message, .action, .motd}
+      m.type in {.join, .message, .action, .motd}
 
-   add-view(label = null) =
-      view = View(label, {}, message-transformers, message-mergers)
-      view.master = @
+   add-view(label = null, matcher = null) =
+      view = View2(@, label, matcher)
+      items(@channels) each {_, ch} ->
+         if view.accepts(ch):
+            view.add-channel(ch)
+      @emit(.add-view, view)
       @views.push(view)
+      if @focus === null:
+         @set-focus(view)
       view
+
+   open-channel(channel, m = null) =
+      if not @channels[channel]:
+         ch = Channel(@, channel, message-transformers, message-mergers)
+         @channels[channel] = ch
+         targets = @views each v when v.accepts(ch) -> v
+         if targets.length === 0:
+            if not m or @view-trigger(m):
+               view = @add-view(null)
+               view.add-channel(ch)
+            else:
+               @emit(.unattached-message, m)
+         else:
+            targets each v ->
+               v.add-channel(ch)
+      @channels[channel]
 
    process(new-message) =
       if not new-message:
          return null
-      channel = new-message.channel
-      targets = @views each v when v.accepts(new-message) -> v
-      if targets.length === 0 and @view-trigger(new-message):
-         view = @add-view(null)
-         view.add-channel(channel)
-         view.add-channel("/notice")
-         view.process-message(new-message)
-         @emit(.add-view, view)
-      else:
-         targets each view ->
-            view.process-message(new-message)
+      ch = @open-channel(new-message.channel, new-message)
+      ch.process-message(new-message)
 
    send(message) =
       @source.send(message)
@@ -320,4 +377,314 @@ class Dispatcher < EventEmitter:
          m.message-id = uuid()
          m.seq-id = next-id()
          @process(m)
+
+
+
+
+
+
+
+
+
+
+;; class View < EventEmitter:
+
+;;    constructor(@_label, channels, @transformers, @mergers) =
+;;       @active = false
+;;       @active-channel = null
+;;       @max-size = 1000
+;;       @messages = {}
+;;       @users = {=}
+;;       @own-names = {=}
+;;       @channels = new Set()
+;;       set-interval(fn, 1000) where fn() =
+;;          @emit(.tick)
+;;       channels each c ->
+;;          @add-channel(c)
+
+;;    ;; Own nickname
+
+;;    active-nickname() =
+;;       @own-names[@active-channel or ""] or ""
+
+;;    set-nickname(channel, name) =
+;;       @own-names[channel] = name
+;;       @emit(.set-nickname, channel, name)
+
+;;    ;; Group label
+
+;;    label() =
+;;       @_label or @active-channel or "??"
+
+;;    set-label(@_label) =
+;;       @emit(.set-label, @label())
+
+;;    ;; Activity
+
+;;    set-active(@active = true) =
+;;       @emit(.set-active, @active)
+
+;;    set-active-channel(@active-channel) =
+;;       @emit(.set-active-channel, @active-channel)
+;;       if not @_label:
+;;          @emit(.set-label, @label())
+
+;;    ;; Channels
+
+;;    accepts(m) =
+;;       @channels.has(m.channel) or (@active and @channels.has('/{m.type}'))
+
+;;    add-channel(channel) =
+;;       if not @channels.has(channel):
+;;          @users[channel] = {=}
+;;          @channels.add(channel)
+;;          @emit(.add-channel, channel)
+;;       if @channels.size === 1:
+;;          @set-active-channel(channel)
+
+;;    remove-channel(channel) =
+;;       if @channels.has(channel):
+;;          delete @users[channel]
+;;          @channels.delete(channel)
+;;          @emit(.remove-channel, channel)
+;;       if @active-channel === channel:
+;;          @set-active-channel(null)
+
+;;    move-channel(channel, new-channel) =
+;;       if @channels.has(channel):
+;;          @users[new-channel] = @users[channel]
+;;          delete @users[channel]
+;;          @channels.delete(channel)
+;;          @channels.add(new-channel)
+;;          @emit(.move-channel, channel, new-channel)
+;;          if @active-channel === channel:
+;;             @set-active-channel(new-channel)
+
+;;    ;; Users
+
+;;    remove-user(channel, name) =
+;;       chu = @users[channel]
+;;       if chu[name] as u:
+;;          @emit(.remove-user, channel, u)
+;;          delete chu[name]
+
+;;    update-user(channel, name, u) =
+;;       chu = @users[channel]
+;;       chu[name] = u
+;;       @emit(.update-user, channel, u)
+
+;;    with-user(channel, _name, fn) =
+;;       name = _name or "#"
+;;       network = get-network(channel)
+;;       chu = @users[channel]
+;;       u = chu[name] or {
+;;          nickname = name
+;;          modes = new Set()
+;;       }
+;;       match fn(u):
+;;          false? ->
+;;             @remove-user(channel, name)
+;;          u when u.nickname !== name ->
+;;             @remove-user(channel, name)
+;;             @update-user(channel, u.nickname, u)
+;;             @move-channel with
+;;                {network, name}.join("/")
+;;                {network, u.nickname}.join("/")
+;;          u ->
+;;             @update-user(channel, name, u)
+
+;;    update-from-message(m) =
+;;       channel = m.channel
+;;       match m.type:
+
+;;          .nick ->
+;;             if not m.from or m.from === @own-names[channel]:
+;;                @set-nickname(channel, m.to)
+;;             @with-user(channel, m.from) with u ->
+;;                u & {nickname = m.to}
+
+;;          .names ->
+;;             to-delete = new Set with keys(@users[channel])
+;;             items(m.content) each {nickname, data} ->
+;;                to-delete.delete(nickname)
+;;                @with-user(channel, nickname) with u ->
+;;                   s = u.modes
+;;                   data.operator-level each
+;;                      "~" -> s.add("q")
+;;                      "&" -> s.add("a")
+;;                      "@" -> s.add("o")
+;;                      "%" -> s.add("h")
+;;                      "+" -> s.add("v")
+;;                      other -> pass
+;;                   u
+;;             to-delete each name ->
+;;                @remove-user(channel, name)
+
+;;          .join ->
+;;             @with-user(channel, m.agent) with u -> u
+;;             if m.self:
+;;                @set-nickname(channel, m.agent)
+
+;;          .part or .quit ->
+;;             @remove-user(channel, m.agent)
+
+;;          .add-mode when R"[vhoaq]"? m.mode ->
+;;             @with-user(channel, m.argument) with u ->
+;;                u.modes.add(m.mode)
+;;                u
+
+;;          .remove-mode when R"[vhoaq]"? m.mode ->
+;;             @with-user(channel, m.argument) with u ->
+;;                u.modes.delete(m.mode)
+;;                u
+
+;;          else ->
+;;             return
+
+;;    ;; Transform and merge
+
+;;    transform-message(m) =
+;;       loopy(m) =
+;;          fn = @transformers[m.type] or @transformers._other
+;;          m2 = fn.call(@, m)
+;;          if not m2:
+;;             null
+;;          elif m2 === true or m === m2:
+;;             m
+;;          else:
+;;             loopy(m2)
+;;       result = loopy(m)
+;;       if not result:
+;;          return result
+;;       {.time, .channel} each field ->
+;;          result[field] = m[field]
+;;       result.start-time and result.end-time = result.time
+;;       result.message-id = uuid()
+;;       result.seq-id = next-id()
+;;       result
+
+;;    merge-messages(m1, m2) =
+;;       if m1.type !== m2.type or m1.channel !== m2.channel:
+;;          return {m1, m2}
+;;       fn = @mergers[m1.type] or @mergers._other
+;;       m3 = fn.call(@, m1, m2)
+;;       if not m3:
+;;          {m1, m2}
+;;       else:
+;;          m3.message-id = uuid()
+;;          m3.seq-id = next-id()
+;;          m3.start-time = m1.start-time or m1.time
+;;          m3.end-time = m2.end-time or m2.time
+;;          if not m3.time:
+;;             m3.time = m2.time
+;;          {m3}
+
+;;    ;; Message stream
+
+;;    append-message(m) =
+;;       @messages.push(m)
+;;       @emit(.add-message, m)
+
+;;    insert-message(m, i) =
+;;       @messages.splice(i, 0, m)
+;;       @emit(.add-message, m)
+
+;;    pop-message() =
+;;       @emit(.delete-message, @messages.pop())
+
+;;    delete-message(i) =
+;;       @emit(.delete-message, @messages.splice(i, 1)[0])
+
+;;    find-latch(m) =
+;;       ml = @messages.length
+;;       var n = ml - 1
+;;       while n > ml - 20:
+;;          m2 = @messages[n]
+;;          if m2 and m.channel === m2.channel:
+;;             return n
+;;          n -= 1
+;;       return null
+
+;;    incorporate-message(m, orig = @messages.length) =
+;;       idx = @find-latch(m)
+;;       if idx !== null:
+;;          m2 = @messages[idx]
+;;          match @merge-messages(m2, m):
+;;             {_, _} ->
+;;                @insert-message(m, orig)
+;;             {nm} ->
+;;                @delete-message(idx)
+;;                @incorporate-message(nm, idx)
+;;       else:
+;;          @insert-message(m, orig)
+
+;;    ;; Processing a message
+
+;;    process-message(m) =
+;;       m2 = @transform-message(m)
+;;       if m2:
+;;          @incorporate-message(m2)
+;;          @update-from-message(m)
+
+;;    process-messages(ms) =
+;;       ms each m ->
+;;          @process-message(m)
+
+;;    ;; Sending
+
+;;    send(m) =
+;;       m.channel = @active-channel
+;;       @master.send(m)
+
+
+
+;; class Dispatcher < EventEmitter:
+
+;;    constructor(@source) =
+;;       @views = {}
+;;       set-interval(fn, 1000) where fn() =
+;;          @emit(.tick)
+
+;;    activate(view) =
+;;       @views each match v ->
+;;          when v === view ->
+;;             v.set-active(true)
+;;          else ->
+;;             v.set-active(false)
+
+;;    view-trigger(m) =
+;;       m.type in {.notice, .join, .message, .action, .motd}
+
+;;    add-view(label = null) =
+;;       view = View(label, {}, message-transformers, message-mergers)
+;;       view.master = @
+;;       @views.push(view)
+;;       view
+
+;;    process(new-message) =
+;;       if not new-message:
+;;          return null
+;;       channel = new-message.channel
+;;       targets = @views each v when v.accepts(new-message) -> v
+;;       if targets.length === 0 and @view-trigger(new-message):
+;;          view = @add-view(null)
+;;          view.add-channel(channel)
+;;          view.add-channel("/notice")
+;;          view.process-message(new-message)
+;;          @emit(.add-view, view)
+;;       else:
+;;          targets each view ->
+;;             view.process-message(new-message)
+
+;;    send(message) =
+;;       @source.send(message)
+
+;;    async run() =
+;;       while true:
+;;          m = await @source.next()
+;;          if m === null or m === undefined:
+;;             break
+;;          m.message-id = uuid()
+;;          m.seq-id = next-id()
+;;          @process(m)
 
