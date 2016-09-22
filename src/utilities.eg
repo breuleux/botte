@@ -11,6 +11,8 @@ provide:
    mom
    shorten
    SortedArray
+   SortedArray2
+   find-insert2
 
 mom(d) =
    moment(d, "YYYY-MM-DD hh:mm:ss")
@@ -103,23 +105,35 @@ class SortedArray:
 
    add(element) =
       key = @key-function(element)
-      {idx, found} = @_find-key-index(key)
-      if not found or @duplicate-keys:
-         @_keys.splice(idx, 0, key)
-         @_arr.splice(idx, 0, element)
+      if key > @_keys[@_keys.length - 1]:
+         ;; We usually append at the end
+         @_keys.push(key)
+         @_arr.push(element)
       else:
-         @_keys[idx] = key
-         @_arr[idx] = element
+         {idx, found} = @_find-key-index(key)
+         if not found or @duplicate-keys:
+            @_keys.splice(idx, 0, key)
+            @_arr.splice(idx, 0, element)
+         else:
+            @_keys[idx] = key
+            @_arr[idx] = element
       @
 
    .delete(element) =
       key = @key-function(element)
-      {idx, found} = @_find-key-index(key)
-      if found:
-         @_keys.splice(idx, 1)
-         @_arr.splice(idx, 1)
+      if key === @_keys[@_keys.length - 1]:
+         @_keys.pop()
+         @_arr.pop()
       else:
-         throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
+         {idx, found} = @_find-key-index(key)
+         if found:
+            @_keys.splice(idx, 1)
+            @_arr.splice(idx, 1)
+         else:
+            print "~~~~~"
+            print @_arr
+            print element
+            throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
       @
 
    delete-all(elements) =
@@ -135,3 +149,78 @@ class SortedArray:
 
    gen [^Symbol.iterator]() =
       @_arr each x -> yield x
+
+
+
+
+
+
+
+
+find-insert2(xs, x, cmp) =
+   var lo = 0
+   var hi = xs.length - 1
+   while lo <= hi:
+      mid = lo + ((hi - lo) // 2)
+      match cmp(xs[mid], x):
+         < 0  -> lo = mid + 1
+         > 0  -> hi = mid - 1
+         else -> return {mid, true}
+   {lo, false}
+
+class SortedArray2:
+
+   constructor(@compare) =
+      @_arr = {}
+
+   populate(elements) =
+      @_arr = clone(elements).sort(@compare)
+      @
+
+   add-all(elements) =
+      elements each element ->
+         @add(element)
+      @
+
+   delete-all(elements) =
+      elements each element ->
+         @delete(element)
+      @
+
+   add(element) =
+      last = @_arr[@_arr.length - 1]
+      if last === undefined or @compare(last, element) < 0:
+         ;; We usually append at the end
+         @_arr.push(element)
+      else:
+         {idx, found} = @_find-index(element)
+         if not found:
+            @_arr.splice(idx, 0, element)
+         else:
+            @_arr[idx] = element
+      @
+
+   .delete(element) =
+      last = @_arr[@_arr.length - 1]
+      if element === last:
+         @_arr.pop()
+      else:
+         {idx, found} = @_find-index(element)
+         if found:
+            @_arr.splice(idx, 1)
+         else:
+            print @_arr
+            print element
+            throw E.element-not-found with
+               'Element could not be deleted because it could not be found: {element}'
+      @
+
+   find-index(element) =
+      @_find-index(element)[0]
+
+   _find-index(element) =
+      find-insert2(@_arr, element, @compare)
+
+   gen [^Symbol.iterator]() =
+      @_arr each x -> yield x
+

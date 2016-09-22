@@ -92,6 +92,7 @@ component ChannelSelector:
       .tab-labels %
          @state.views each view ->
             SubChannelSelector %
+               key = 'sel-{view.id}'
                master = @props.master
                view = view
 
@@ -136,6 +137,7 @@ component SubChannelSelector:
             perma-focus = @state.selected
          @state.channels each ch when ch !== head-channel ->
             ChannelIndicator %
+               key = 'ssel-{ch.id}'
                class-name = 'tab-channel'
                channel = ch
                view = @props.view
@@ -175,6 +177,9 @@ component ChannelIndicator:
             return
          if @props.master.focus === @props.view:
             return
+         ;; print #bah{@props.master.focus??.label
+         ;;            @props.view??.label
+         ;;            @props.master.focus === @props.view}
          m = ms[ms.length - 1]
          if m.type === .message:
             @set-state with {talking = .talking}
@@ -195,7 +200,7 @@ component ChannelIndicator:
             class-name = @state.talking
          @state.label
          on-click() =
-            @props.master.emit(.set-focus, @props.view)
+            @props.master.set-focus(@props.view)
             if not View2? @props.channel:
                @props.view.set-focus(@props.channel)
 

@@ -9,6 +9,8 @@ require:
    .messages ->
       message-transformers
       message-mergers
+   .shard ->
+      Shardset
 
 provide:
    Channel
@@ -26,6 +28,7 @@ next-id() =
 class Channel < EventEmitter:
 
    constructor(@master, full-name, @transformers, @mergers) =
+      @id = uuid()
       @set-max-listeners(0)
       @_rename(full-name)
       @nickname = null
@@ -148,11 +151,15 @@ class Channel < EventEmitter:
          m2 = fn.call(@, m)
          if not m2:
             null
+         elif m2 === .reject:
+            .reject
          elif m2 === true or m === m2:
             m
          else:
             loopy(m2)
       result = loopy(m)
+      if result === .reject:
+         return null
       if not result:
          return result
       {.time, .channel} each field ->
@@ -238,6 +245,7 @@ class Channel < EventEmitter:
 class View2 < EventEmitter:
 
    constructor(@master, @label = null, @matcher = null) =
+      @id = uuid()
       @set-max-listeners(0)
       @channels = new Set()
       @focus = null
@@ -248,17 +256,41 @@ class View2 < EventEmitter:
          set-nickname(old, new) =
             @emit(.set-nickname, old, new)
             @nickname = new
-         add-users(us) =
-            @emit(.add-users, us)
-         delete-users(us) =
-            @emit(.delete-users, us)
+         ;; add-users(us) =
+         ;;    @emit(.add-users, us)
+         ;; delete-users(us) =
+         ;;    @emit(.delete-users, us)
       }
 
       @general-event-handlers = {
          add-messages(ms) =
+            ;; TODO: error handling
+            @shardset.add-all(ms)
             @emit(.add-messages, ms)
          delete-messages(ms) =
+            ;; TODO: error handling
+            @shardset.delete-all(ms)
             @emit(.delete-messages, ms)
+      }
+
+      @shardset = Shardset(adapter, 20) where adapter = {
+         key(m) =
+            m.start-time
+         low(m) =
+            m.start-time
+         high(m) =
+            m.start-time
+         compare(m1, m2) =
+            if m1.start-time < m2.start-time:
+               -1
+            elif m1.start-time > m2.start-time:
+               1
+            elif m1.seq-id < m2.seq-id:
+               -1
+            elif m1.seq-id > m2.seq-id:
+               1
+            else:
+               0
       }
 
    set-label(new-label) =
@@ -279,7 +311,7 @@ class View2 < EventEmitter:
       if @focus:
          items(@focus-event-handlers) each {name, fn} ->
             @focus.remove-listener(name, fn)
-         @emit(.delete-users, items(@focus.users) each {_, u} -> u)
+         ;; @emit(.delete-users, items(@focus.users) each {_, u} -> u)
       @nickname and @focus = null
 
    set-focus(channel) =
@@ -290,7 +322,7 @@ class View2 < EventEmitter:
       if channel:
          items(@focus-event-handlers) each {name, fn} ->
             channel.on(name, fn)
-         @emit(.add-users, items(channel.users) each {_, u} -> u)
+         ;; @emit(.add-users, items(channel.users) each {_, u} -> u)
          @focus = channel
          @emit(.set-nickname, null, @focus.nickname)
          @nickname = @focus.nickname
@@ -301,6 +333,7 @@ class View2 < EventEmitter:
          channel.on(name, fn)
       @channels.add(channel)
       @emit(.add-messages, channel.messages)
+      @shardset.add-all(channel.messages)
       if @focus === null:
          @set-focus(channel)
 
@@ -309,6 +342,7 @@ class View2 < EventEmitter:
       items(@general-event-handlers) each {name, fn} ->
          channel.remove-listener(name, fn)
       @emit(.delete-messages, channel.messages)
+      @shardset.delete-all(channel.messages)
       @channels.remove(channel)
       if @focus === channel:
          @set-focus(null)
@@ -320,6 +354,7 @@ class View2 < EventEmitter:
 class Dispatcher2 < EventEmitter:
 
    constructor(@source) =
+      @id = uuid()
       @set-max-listeners(0)
       @channels = {=}
       @views = {}
@@ -353,8 +388,8 @@ class Dispatcher2 < EventEmitter:
             if not m or @view-trigger(m):
                view = @add-view(null)
                view.add-channel(ch)
-            else:
-               @emit(.unattached-message, m)
+            elif ch.transform-message(m) as m2:
+               @emit(.unattached-message, m2)
          else:
             targets each v ->
                v.add-channel(ch)

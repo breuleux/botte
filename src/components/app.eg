@@ -92,6 +92,7 @@ component ChatApp2:
          .tab-area %
             @state.views each view ->
                Tab2 %
+                  key = view.id
                   active = (@state.focus === view)
                   master = @props.master
                   view = view

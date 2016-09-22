@@ -5,7 +5,7 @@ require:
       get-network
       shorten
    lodash
-   .links ->
+   .components/links ->
       expand-links
 
 require-macros:
@@ -20,6 +20,9 @@ message-renderers = Object.assign(Object.create(null)) with {
       @show-message(m.channel, m.agent, m.content)
 
    method action(m) =
+      @show-message(m.channel, m.agent, m.content, .action)
+
+   method "ctcp:action"(m) =
       @show-message(m.channel, m.agent, m.content, .action)
 
    method traffic(m) =
@@ -90,17 +93,18 @@ message-renderers = Object.assign(Object.create(null)) with {
       if m.content:
          .message.topic %
             .message-channel % shorten(m.channel)
+            .message-source % ""
             .channel-topic %
                .channel-topic-content % expand-links(m.content)
                .channel-topic-set-by % m.agent
 
    method add-mode(m) =
       ag = m.agent or get-network(m.channel) or "??"
-      @status-message('{ag} sets mode +{m.mode} {m.argument or ""}')
+      @status-message(m.channel, '{ag} sets mode +{m.mode} {m.argument or ""}')
 
    method remove-mode(m) =
       ag = m.agent or get-network(m.channel) or "??"
-      @status-message('{ag} sets mode -{m.mode} {m.argument or ""}')
+      @status-message(m.channel, '{ag} sets mode -{m.mode} {m.argument or ""}')
 
    method names(m) =
       null

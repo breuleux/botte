@@ -153,7 +153,9 @@ class Interactor:
                   null
          _ ->
             result = @execute{commands, e}
-            if [result == undefined or [result.match and result.match{"break"}]]:
+            if [result === undefined
+                \ or result === null
+                \ or [result.match and result.match{"break"}]]:
                prevent{e}
             if [[not [result and result.match and result.match{"stick"}]]
                 \ and @current_bindings

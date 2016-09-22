@@ -2,7 +2,9 @@
 require:
    .mixins ->
       ViewEvents
+      ChannelEvents
       MasterEvents
+      DebouncedTasks
    ..utilities ->
       SortedArray
       compute-level
@@ -13,8 +15,8 @@ require-macros:
 
 provide:
    User
-   ;; Users
-   Users2
+   ViewUsers
+   ChannelUsers
 
 
 component User:
@@ -74,29 +76,124 @@ UserArray(users) =
       u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
    s.populate(users)
 
-component Users2:
-   mixins = {ViewEvents}
+;; component Users2:
+;;    mixins = {ViewEvents, DebouncedTasks}
+
+;;    get-initial-state() = {
+;;       users = UserArray with
+;;          if @props.view.focus as ch:
+;;             then: items(ch.users) each {k, v} -> v, {}
+;;             else: {}
+;;    }
+
+;;    execute-tasks(tasks) =
+;;       var to-add = {}
+;;       var to-delete = {}
+;;       new-state = {=}
+;;       tasks each
+;;          #add-all{us} ->
+;;             to-add = to-add ++ us
+;;          #delete-all{us} ->
+;;             to-delete = to-delete ++ us
+;;       if to-add.length > 0:
+;;          new-state.users = @state.users.add-all(to-add)
+;;       if to-delete.length > 0:
+;;          new-state.users = (new-state.users or @state.users).delete-all(to-delete)
+;;       if new-state != {=}:
+;;          @set-state(new-state)
+
+;;    view-events() = {
+;;       add-users(us) =
+;;          ;; @do-task(#add-all{us})
+;;          @set-state with {
+;;             users = @state.users.add-all(us)
+;;          }
+;;       delete-users(us) =
+;;          ;; @do-task(#delete-all{us})
+;;          @set-state with {
+;;             users = @state.users.delete-all(us)
+;;          }
+;;    }
+
+;;    render() =
+;;       .users %
+;;          @state.users each data ->
+;;             l = compute-level(data.modes)
+;;             span.user-name %
+;;                class-name = 'user-level-{l}'
+;;                data.nickname
+
+
+
+component ViewUsers:
+   mixins = {ViewEvents, DebouncedTasks}
 
    get-initial-state() = {
-      users = UserArray with
-         if @props.view.focus as ch:
-            then: items(ch.users) each {k, v} -> v, {}
-            else: {}
+      channels = consume(@props.view.channels)
    }
 
    view-events() = {
-      add-users(us) =
-         @set-state with {
-            users = @state.users.add-all(us)
-         }
-      delete-users(us) =
-         @set-state with {
-            users = @state.users.delete-all(us)
-         }
+      add-channel(channel) =
+         @set-state with {channels = @state.channels ++ {channel}}
+      remove-channel(channel) =
+         @set-state with {channels = @state.channels each c when c !== channel -> c}
    }
 
    render() =
       .users %
+         @state.channels each ch ->
+            ChannelUsers %
+               master = @props.master
+               view = @props.view
+               channel = ch
+
+
+component ChannelUsers:
+   mixins = {ViewEvents, ChannelEvents, DebouncedTasks}
+
+   get-initial-state() = {
+      focus = @props.view.focus
+      users = UserArray with items(@props.channel.users) each {k, v} -> v
+   }
+
+   execute-tasks(tasks) =
+      var changes = false
+      var users = @state.users
+      tasks each
+         #add-all{us} ->
+            changes = true
+            users = users.add-all(us)
+         #delete-all{us} ->
+            changes = true
+            users = users.delete-all(us)
+      if changes:
+         @set-state({= users})
+
+   view-events() = {
+      set-focus(_, focus) =
+         @set-state with {focus = focus}
+   }
+
+   channel-events() = {
+      add-users(us) =
+         ;; @do-task(#add-all{us})
+         @set-state with {
+            users = @state.users.add-all(us)
+         }
+      delete-users(us) =
+         ;; @do-task(#delete-all{us})
+         @set-state with {
+            users = @state.users.delete-all(us)
+         }
+      ;; add-users(us) =
+      ;;    @do-task(#add-all{us})
+      ;; delete-users(us) =
+      ;;    @do-task(#delete-all{us})
+   }
+
+   render() =
+      .channel-users %
+         class-name = if{@state.focus === @props.channel, .focused, .unfocused}
          @state.users each data ->
             l = compute-level(data.modes)
             span.user-name %

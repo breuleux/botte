@@ -16,7 +16,7 @@ body
   margin: 0
   font-family: system, -apple-system, ".SFNSDisplay-Regular", "Helvetica Neue", Helvetica, "Segoe UI", sans-serif;
   font-size: 16px
-  line-height: 1.6
+  line-height: 1.4
   color: #333
   background-color: transparent
 
@@ -74,29 +74,39 @@ html, body, #mount, .main-window
 /* .tab-channel.active
 /*   font-weight: bold
 
-.tab-channel-activity
+.tab-channel .tab-channel-activity
   margin-left: 0.225em
 
-.tab-label-activity, .tab-channel-activity
+.tab-channel-activity
   display: inline-block
   border-radius: 50%
   margin-right: 5px
   transition: background 0.5s
 
-.tab-label-activity
-  background: purple
-  width: 1.2em
-  height: 1.2em
-  vertical-align: middle
+.tab-label
+  .tab-channel-activity
+    width: 1.2em
+    height: 1.2em
+    vertical-align: middle
 
-.tab-channel-activity
-  width: 0.75em
-  height: 0.75em
-.tab-channel-activity.not-talking
-  background: black
-.tab-channel-activity.talking, .tab-label-activity.talking
+.tab-channel
+  .tab-channel-activity
+    width: 0.75em
+    height: 0.75em
+
+.tab-label.selected
+  .tab-channel-activity.not-talking
+    background: #a8a
+.tab-label
+  .tab-channel-activity.not-talking
+    background: #aaa
+.tab-channel
+  .tab-channel-activity.not-talking
+    background: #ddd
+
+.tab-channel-activity.talking
   background: orange
-.tab-channel-activity.talked, .tab-label-activity.talked
+.tab-channel-activity.talked
   background: red
 
 .tab-label:hover, .tab-channel:hover
@@ -126,6 +136,7 @@ html, body, #mount, .main-window
   grid-template-rows: 1fr $input-height
 
 .messages
+  position: relative
   background: white
   grid-column: 1 / span 1
   grid-row: 1 / span 1
@@ -167,16 +178,16 @@ html, body, #mount, .main-window
     padding-left: 0px
 
 .message-channel
-  width: 150px
+  width: 10px
   /* background: #555
   color: #aaa
   grid-column: 1 / span 1
   padding-right: 5px
-  overflow: hidden
+  /* overflow: hidden
 
 .message-source
   /* display: inline-block
-  width: 150px
+  width: 300px
   grid-column: 2 / span 1
   text-align: right
   padding-right: 5px
@@ -218,6 +229,7 @@ html, body, #mount, .main-window
   padding: 5px
   border: 0px
   outline: 0px
+  font-size: 16px
 
 .user
   transition: background 0.15s
@@ -267,7 +279,7 @@ html, body, #mount, .main-window
   content: " 🡺 "
 
 .channel-topic
-  grid-column: 2 / span 2
+  grid-column: 3 / span 1
   width: 100%
 
 .channel-topic-content
@@ -412,11 +424,11 @@ html, body, #mount, .main-window
   grid-template-columns: auto 1fr
   grid-template-rows: 1fr auto
   border: 1px solid #aaa
-  max-width: 550px
+  max-width: 650px
   
 .website-media
   width: auto
-  max-width: 120px
+  max-width: 240px
   max-height: 120px
   grid-column: 1 / span 1
   grid-row: 1 / span 2
@@ -456,7 +468,8 @@ a.website-card
 
 .inactive-message
   opacity: 0.5
-  font-size: 10px
+  font-size: 11px
+  line-height: 1
   background: #f5f5f5
 
 .inactive-message .traffic
@@ -464,7 +477,6 @@ a.website-card
 
 .inactive-message .topic
   display: none
-
 /*   transition: font-size 0.15s, opacity 0.15s
 
 /* .active-message
@@ -474,3 +486,20 @@ a.website-card
 .user-name.inactive
   font-size: 10px
   color: #aaa
+
+
+/* .shard
+/*   margin-top: 5px
+/*   border-top: 3px solid purple
+
+.scroll-fade
+  position: absolute
+  left: 20px
+  top: 20px
+  width: 100px
+  height: 100px
+  background: red
+
+.channel-users.unfocused
+  display: none
+

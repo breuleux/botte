@@ -4,7 +4,7 @@ require:
    react-youtube-player as YoutubePlayer
    react-addons-pure-render-mixin as PureRender
    request-promise as rq
-   promisify! open-graph as og
+   open-graph as og
 
 require-macros:
    earl-react ->
@@ -18,7 +18,7 @@ ExpanderComponent = {
    method get-initial-state() = {
       hide-link = @props.hide-link
       open = @props.open
-      has-icon = true
+      has-icon = if{@props.has-icon === undefined, true, @props.has-icon}
    }
    method render() =
       image = if{@state.open, @opened-icon or "base/cross", @closed-icon}
@@ -111,15 +111,17 @@ component PastebinExpander:
 component OpenGraphExpander:
    mixins = {ExpanderComponent, PureRender}
    closed-icon = "base/globe"
-   async component-will-mount() =
-      graph = await og(@props.href)
-      if graph.title:
-         @set-state with {graph = graph, has-icon = true}
-      else:
-         @set-state with {has-icon = false}
-   get-initial-state() = {
-      graph = null
-   }
+   get-initial-state() =
+      {
+         graph = null
+      }
+   component-will-mount() =
+      og(@props.href) with {err, graph} ->
+         if err or not graph.title:
+            print 'Failed to get info for: {@props.href}'
+            @set-state with {has-icon = false}
+         else:
+            @set-state with {graph = graph, has-icon = true}
    render-opened() =
       g = @state.graph
       if g:
@@ -160,15 +162,15 @@ expand-links(text) =
                   href = split
                   id = id
                   open = true
-            else ->
-               OpenGraphExpander %
-                  href = split
-                  has-icon = false
-                  open = false
             ;; else ->
-            ;;    a %
+            ;;    OpenGraphExpander %
             ;;       href = split
-            ;;       split
+            ;;       has-icon = false
+            ;;       open = false
+            else ->
+               a %
+                  href = split
+                  split
       }
       else ->
          split

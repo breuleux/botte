@@ -1,0 +1,128 @@
+
+require:
+   events -> EventEmitter
+   .utilities ->
+      find-insert2
+      SortedArray2
+   node-uuid as uuid
+
+provide:
+   shard-find
+   Shardset
+   Shard
+
+
+
+shard-find(range, entry) =
+   range as {=> min, => max}
+   if min !== null and entry < min:
+      1
+   elif max !== null and entry >= max:
+      -1
+   else:
+      0
+
+
+class Shardset < EventEmitter:
+
+   constructor(@adapter, @shard-capacity) =
+      @parts = {Shard(@adapter, @shard-capacity, null, null)}
+      @id = uuid()
+
+   locate(element) =
+      key = @adapter.key(element)
+      {index, found} = find-insert2(@parts, key, shard-find)
+      ;; if not found:
+      ;;    if index === 0:
+      ;;       @parts.unshift(Shard(null, @parts[0].min))
+      ;;    else:
+      ;;       @parts.push(Shard(null, @parts[0].min))
+      if not found:
+         throw E.this-is-not-supposed-to-happen()
+      @parts[index]
+
+   add(element) =
+      ;; print "------"
+      ;; print 'ADD: {element.content}'
+      ;; print element
+      shard = @locate(element)
+      ;; print shard
+      if shard.reached-capacity():
+         if shard.max === null:
+            hi = @adapter.high(element)
+            if shard.current-max === hi:
+               shard.add(element)
+            else:
+               @close-max(hi)
+               @add(element)
+         elif shard.min === null:
+            shard.add(element)
+            @close-min(@adapter.low(element))
+         else:
+            ;; TODO: split the shard
+            shard.add(element)
+      else:
+         shard.add(element)
+      @
+
+   .delete(element) =
+      @locate(element).delete(element)
+      @
+
+   add-all(elements) =
+      elements each element ->
+         @add(element)
+      @
+
+   delete-all(elements) =
+      elements each element ->
+         @delete(element)
+      @
+
+   close-min(min-time) =
+      ;; print 'close-min'
+      @parts[0].min = min-time
+      new-shard = Shard(@adapter, @shard-capacity, null, min-time)
+      @parts.unshift(new-shard)
+      @emit(.add-shard, new-shard, 0)
+      ;; print @parts
+
+   close-max(max-time) =
+      ;; print 'close-max'
+      @parts[@parts.length - 1].max = max-time
+      new-shard = Shard(@adapter, @shard-capacity, max-time, null)
+      @parts.push(new-shard)
+      @emit(.add-shard, new-shard, @parts.length - 1)
+      ;; print @parts
+
+
+
+class Shard < EventEmitter:
+
+   constructor(@adapter, @capacity, @min = null, @max = null) =
+      @elements = SortedArray2(@adapter.compare)
+      @current-min and @current-max = null
+
+   reached-capacity() =
+      @elements._arr.length >= @capacity
+
+   add(element) =
+      @elements.add(element)
+      @current-min = @adapter.key(@elements._arr[0])
+      @current-max = @adapter.key(@elements._arr[@elements._arr.length - 1])
+      @emit(.add-element, element)
+      @
+
+   .delete(element) =
+      @elements.delete(element)
+      if @elements._arr.length > 0:
+         @current-min = @adapter.key(@elements._arr[0])
+         @current-max = @adapter.key(@elements._arr[@elements._arr.length - 1])
+      else:
+         @current-min and @current-max = null
+      @emit(.delete-element, element)
+      @
+
+   split() =
+      throw E.not-implemented()
+

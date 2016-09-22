@@ -4,13 +4,16 @@ require:
       MasterEvents, ViewEvents
    .message ->
       ;; Messages
-      Messages2
+      ;; Messages2
+      ShardsetComponent
    .user ->
       ;; Users
-      Users2
+      ViewUsers
    .input ->
       ;; Input
       Input2
+   ;; ..shard ->
+   ;;    Shardset
 
 require-macros:
    earl-react ->
@@ -55,10 +58,14 @@ component Tab2:
    render() =
       .tab-window %
          class-name = if{@state.active, .active, ""}
-         Messages2 %
+         ;; Messages2 %
+         ;;    master = @props.master
+         ;;    view = @props.view
+         ShardsetComponent %
             master = @props.master
             view = @props.view
-         Users2 %
+            shardset = @props.view.shardset
+         ViewUsers %
             master = @props.master
             view = @props.view
          Input2 %

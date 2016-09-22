@@ -1,18 +1,22 @@
 
 require:
    react-addons-pure-render-mixin as PureRender
+   lodash
 
 provide:
    PureRender
    ViewEvents
    MasterEvents
    ChannelEvents
+   ShardEvents
+   ShardsetEvents
+   DebouncedTasks
 
 from-field(field) =
    private-field = '__{field}Events'
    public-field = '{field}Events'
    {
-      method component-will-mount() =
+      method component-did-mount() =
          pubf = @[public-field]
          @[private-field] = Object.assign(Object.create(null), pubf())
          items(@[private-field]) each {ev, fn} ->
@@ -25,36 +29,20 @@ from-field(field) =
 MasterEvents = from-field(.master)
 ViewEvents = from-field(.view)
 ChannelEvents = from-field(.channel)
+ShardEvents = from-field(.shard)
+ShardsetEvents = from-field(.shardset)
 
-DebounceTimer = {
-   method schedule-interval(name = .default, time, fn) =
-      pass
-   method schedule-once(name = .default, time, fn) =
-      pass
-   method component-will-mount() =
-      pass
+DebouncedTasks = {
+   method component-did-mount() =
+      @_tasks = {}
+      @_go = lodash.debounce(fn, 10, max-wait = 100) where fn() =
+         @execute-tasks(@simplify-tasks(@_tasks))
    method component-will-unmount() =
-      pass
+      @_go.cancel()
+   method do-task(task) =
+      @_tasks.push(task)
+      @_go()
+   method simplify-tasks(tasks) =
+      tasks
 }
 
-
-
-;; MasterEvents = {
-;;    method component-will-mount() =
-;;       @__master-events = Object.assign(Object.create(null), @master-events())
-;;       items(@__master-events) each {ev, fn} ->
-;;          @props.master.on(ev, fn)
-;;    method component-will-unmount() =
-;;       items(@__master-events) each {ev, fn} ->
-;;          @props.master.remove-listener(ev, fn)
-;; }
-
-;; ViewEvents = {
-;;    method component-will-mount() =
-;;       @__view-events = Object.assign(Object.create(null), @view-events())
-;;       items(@__view-events) each {ev, fn} ->
-;;          @props.view.on(ev, fn)
-;;    method component-will-unmount() =
-;;       items(@__view-events) each {ev, fn} ->
-;;          @props.view.remove-listener(ev, fn)
-;; }

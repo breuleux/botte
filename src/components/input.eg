@@ -143,6 +143,7 @@ provide:
 
 component Input2:
    mixins = {ViewEvents}
+
    get-initial-state() = {
       last-active = {=}
       tab-cycle = null
@@ -166,6 +167,7 @@ component Input2:
          @props.view.set-focus(ch)
 
    cycle(direction = 1) =
+      @_clear-cycle-timer or= lodash.debounce(@clear-cycle, 500)
       var idx = @state.cycle-index
       var cyc = @state.tab-cycle
       if not cyc:
@@ -175,6 +177,7 @@ component Input2:
       if next-idx === 0:
          @clear-cycle()
       else:
+         @_clear-cycle-timer()
          @set-state with {tab-cycle = cyc, cycle-index = next-idx}
 
    cycle-group(match direction = 1) =

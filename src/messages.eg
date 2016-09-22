@@ -58,16 +58,21 @@ message-transformers = Object.assign(Object.create(null)) with {
       make-traffic.call(@, m.agent, #part{}, m)
 
    method quit(m) =
-      if (@users[m.channel] or {=})[m.agent]:
+      print '{m.agent} quits {m.channel}'
+      if @users[m.agent]:
          make-traffic.call(@, m.agent, #quit{}, m)
       else:
-         null
+         print .rejected
+         .reject
 
    method kick(m) =
       make-traffic.call(@, m.kicked, #kick{}, m)
 
    method nick(m) =
-      make-traffic.call(@, m.to, #nick{m.from, m.to}, m)
+      if m.from and @users[m.from]:
+         make-traffic.call(@, m.to, #nick{m.from, m.to}, m)
+      else:
+         .reject
 
    method _other(m) =
       m
