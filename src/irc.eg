@@ -193,17 +193,26 @@ events = {
    ;; method pm(*args) =
    ;;    @unhandled('pm', args)
 
-   method ctcp(*args) =
-      @unhandled('ctcp', args)
+   method ctcp(from, to, text, ctcp-type, m) =
+      {cmd >> cmd.lower-case(), *args} = text.split(" ")
+      {
+         type = match ctcp-type:
+            .privmsg -> 'ctcp:{cmd}'
+            .notice -> 'ctcp-reply:{cmd}'
+            else -> 'ctcp-error:{cmd}'
+         agent = from
+         channel = to
+         content = args.join(" ")
+      }
 
-   method ctcp-notice(*args) =
-      @unhandled('ctcp-notice', args)
+   ;; method ctcp-notice(*args) =
+   ;;    @unhandled('ctcp-notice', args)
 
-   method ctcp-privmsg(*args) =
-      @unhandled('ctcp-privmsg', args)
+   ;; method ctcp-privmsg(*args) =
+   ;;    @unhandled('ctcp-privmsg', args)
 
-   method ctcp-version(*args) =
-      @unhandled('ctcp-version', args)
+   ;; method ctcp-version(*args) =
+   ;;    @unhandled('ctcp-version', args)
 
    method nick(oldnick, newnick, channels, m) =
       if not oldnick or oldnick === @nickname:
@@ -249,9 +258,6 @@ events = {
 
    method error(*args) =
       @unhandled('error', args)
-
-   method action(*args) =
-      @unhandled('action', args)
 }
 
 
@@ -397,7 +403,8 @@ async main() =
          channels each channel ->
             ch = extract-channel(channel)
             nw = extract-network(channel)
-            (connections[nw] or= {}).push(ch)
+            if ch !== "":
+               (connections[nw] or= {}).push(ch)
       items(connections) each {nw, channels} ->
          d.connect(nw, channels)
 
