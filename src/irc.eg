@@ -194,7 +194,7 @@ events = {
    ;;    @unhandled('pm', args)
 
    method ctcp(from, to, text, ctcp-type, m) =
-      {cmd >> cmd.lower-case(), *args} = text.split(" ")
+      {cmd >> cmd.to-lower-case(), *args} = text.split(" ")
       {
          type = match ctcp-type:
             .privmsg -> 'ctcp:{cmd}'
