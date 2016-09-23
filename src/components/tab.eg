@@ -7,17 +7,17 @@ require:
    .user ->
       ViewUsers
    .input ->
-      Input2
+      Input
 
 require-macros:
    earl-react ->
       %, component
 
 provide:
-   Tab2
+   Tab
 
 
-component Tab2:
+component Tab:
    mixins = {MasterEvents}
    get-initial-state() = {
       active = @props.master.focus === @props.view
@@ -36,6 +36,6 @@ component Tab2:
          ViewUsers %
             master = @props.master
             view = @props.view
-         Input2 %
+         Input %
             master = @props.master
             view = @props.view

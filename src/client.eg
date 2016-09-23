@@ -8,14 +8,12 @@ require:
    /browser -> document
    /dom
    .components/app ->
-      ;; ChatApp
-      ChatApp2
+      ChatApp
    .source ->
       StreamSource
       StaticSource
    .master ->
-      ;; Dispatcher
-      Dispatcher2
+      Dispatcher
 
 require-macros:
    earl-react ->
@@ -28,49 +26,24 @@ ipc-renderer.on(.end) with {event, data} ->
    stdin-buffer.emit(.end)
 ipc-renderer.send(.ready)
 
-;; setup(options) =
-;;    src = match options:
-;;       {=> messages} -> StaticSource(options.messages)
-;;       {=> stream} -> StreamSource(stream.[in], stream.out)
-;;    let master = Dispatcher(src)
-
-;;    items(options.settings.client.groups) each
-;;       {label, channels} ->
-;;          view = master.add-view(label)
-;;          channels each ch ->
-;;             view.add-channel(ch)
-;;             view.set-active-channel(ch)
-;;          view.add-channel("/notice")
-;;          master.activate(view)
-
-;;    ReactDOM.render(a, options.mount) where a =
-;;       ChatApp %
-;;          master = master
-;;    master.run()
-
-setup2(options) =
+setup(options) =
    src = match options:
       {=> messages} -> StaticSource(options.messages)
       {=> stream} -> StreamSource(stream.[in], stream.out)
-   let master = Dispatcher2(src)
+   let master = Dispatcher(src)
 
    items(options.settings.client.groups) each
       {label, channels} ->
          view = master.add-view(label, channels)
-         ;; channels each channel-name ->
-         ;;    ;; ch = master.open-channel(channel-name)
-         ;;    ;; view.add-channel(ch)
-         ;;    ;; view.set-focus(ch)
-         ;; ;; master.activate(view)
 
    ReactDOM.render(a, options.mount) where a =
-      ChatApp2 %
+      ChatApp %
          master = master
    master.run()
 
 main() where main() =
    mount-node = document.get-element-by-id("mount")
-   setup2 with {
+   setup with {
       mount = mount-node
       stream = {
          "in" = stdin-buffer

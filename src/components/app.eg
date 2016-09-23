@@ -4,17 +4,17 @@ require:
    .channels ->
       ChannelSelector
    .tab ->
-      Tab2
+      Tab
 
 require-macros:
    earl-react ->
       %, component
 
 provide:
-   ChatApp2
+   ChatApp
 
 
-component ChatApp2:
+component ChatApp:
 
    mixins = {MasterEvents}
 
@@ -47,7 +47,7 @@ component ChatApp2:
             master = @props.master
          .tab-area %
             @state.views each view ->
-               Tab2 %
+               Tab %
                   key = view.id
                   active = (@state.focus === view)
                   master = @props.master

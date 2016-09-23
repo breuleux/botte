@@ -14,8 +14,8 @@ require:
 
 provide:
    Channel
-   View2
-   Dispatcher2
+   View
+   Dispatcher
 
 
 var __id = 0
@@ -240,7 +240,7 @@ class Channel < EventEmitter:
 
 
 
-class View2 < EventEmitter:
+class View < EventEmitter:
 
    constructor(@master, @label = null, @matcher = null) =
       @id = uuid()
@@ -342,7 +342,7 @@ class View2 < EventEmitter:
       @focus.send(m)
 
 
-class Dispatcher2 < EventEmitter:
+class Dispatcher < EventEmitter:
 
    constructor(@source) =
       @id = uuid()
@@ -360,7 +360,7 @@ class Dispatcher2 < EventEmitter:
       m.type in {.join, .message, .action, .motd}
 
    add-view(label = null, matcher = null) =
-      view = View2(@, label, matcher)
+      view = View(@, label, matcher)
       items(@channels) each {_, ch} ->
          if view.accepts(ch):
             view.add-channel(ch)

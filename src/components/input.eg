@@ -14,11 +14,11 @@ require-macros:
       %, component
 
 provide:
-   Input2
+   Input
 
 
 
-component Input2:
+component Input:
    mixins = {ViewEvents}
 
    get-initial-state() = {

@@ -8,7 +8,7 @@ require:
    ..utilities ->
       shorten
    ..master ->
-      View2
+      View
 
 require-macros:
    earl-react ->
@@ -142,6 +142,6 @@ component ChannelIndicator:
          @state.label
          on-click() =
             @props.master.set-focus(@props.view)
-            if not View2? @props.channel:
+            if not View? @props.channel:
                @props.view.set-focus(@props.channel)
 

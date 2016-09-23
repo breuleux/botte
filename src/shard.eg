@@ -2,8 +2,8 @@
 require:
    events -> EventEmitter
    .utilities ->
-      find-insert2
-      SortedArray2
+      find-insert
+      SortedArray
    node-uuid as uuid
 
 provide:
@@ -31,7 +31,7 @@ class Shardset < EventEmitter:
 
    locate(element) =
       key = @adapter.key(element)
-      {index, found} = find-insert2(@parts, key, shard-find)
+      {index, found} = find-insert(@parts, key, shard-find)
       ;; if not found:
       ;;    if index === 0:
       ;;       @parts.unshift(Shard(null, @parts[0].min))
@@ -100,7 +100,7 @@ class Shardset < EventEmitter:
 class Shard < EventEmitter:
 
    constructor(@adapter, @capacity, @min = null, @max = null) =
-      @elements = SortedArray2(@adapter.compare)
+      @elements = SortedArray(@adapter.compare)
       @current-min and @current-max = null
 
    reached-capacity() =

@@ -32,8 +32,21 @@ color-cache = {=}
 
 
 MessageArray(messages) =
-   s = SortedArray(___, false) with
-      m -> m.start-time + " " + m.seq-id
+   s = SortedArray with {m1, m2} ->
+      t1 = m1.start-time
+      t2 = m2.start-time
+      s1 = m1.seq-id
+      s2 = m2.seq-id
+      if t1 < t2:
+         -1
+      elif t1 > t2:
+         1
+      elif s1 < s2:
+         -1
+      elif s1 > s2:
+         1
+      else:
+         0
    s.populate(messages)
 
 component Message:

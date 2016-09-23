@@ -28,10 +28,17 @@ component User:
 
 
 UserArray(users) =
-   s = SortedArray(___, false) with
-      u -> {0*compute-level(u.modes), u.nickname.to-lower-case()}
+   s = SortedArray with {u1, u2} ->
+      ;; ldiff = compute-level(u1.modes) - compute-level(u2.modes)
+      n1 = u1.nickname.to-lower-case()
+      n2 = u2.nickname.to-lower-case()
+      if n1 < n2:
+         -1
+      elif n1 > n2:
+         1
+      else:
+         0
    s.populate(users)
-
 
 
 component ViewUsers:

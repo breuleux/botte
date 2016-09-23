@@ -11,8 +11,7 @@ provide:
    mom
    shorten
    SortedArray
-   SortedArray2
-   find-insert2
+   find-insert
 
 mom(d) =
    moment(d, "YYYY-MM-DD hh:mm:ss")
@@ -75,89 +74,84 @@ parse-space-code(s) =
    result
 
 
-findInsert(xs, x) =
-   var lo = 0
-   var hi = xs.length - 1
-   while lo <= hi:
-      mid = lo + ((hi - lo) // 2)
-      match xs[mid]:
-         < x  -> lo = mid + 1
-         > x  -> hi = mid - 1
-         else -> return {mid, true}
-   {lo, false}
+;; findInsert(xs, x) =
+;;    var lo = 0
+;;    var hi = xs.length - 1
+;;    while lo <= hi:
+;;       mid = lo + ((hi - lo) // 2)
+;;       match xs[mid]:
+;;          < x  -> lo = mid + 1
+;;          > x  -> hi = mid - 1
+;;          else -> return {mid, true}
+;;    {lo, false}
 
 
-class SortedArray:
+;; class SortedArray:
 
-   constructor(@key-function, @duplicate-keys = true) =
-      @_arr = {}
-      @_keys = {}
+;;    constructor(@key-function, @duplicate-keys = true) =
+;;       @_arr = {}
+;;       @_keys = {}
 
-   populate(elements) =
-      @_arr = lodash.sort-by(elements, @key-function)
-      @_keys = lodash.sort-by(elements.map(@key-function))
-      @
+;;    populate(elements) =
+;;       @_arr = lodash.sort-by(elements, @key-function)
+;;       @_keys = lodash.sort-by(elements.map(@key-function))
+;;       @
 
-   add-all(elements) =
-      elements each element ->
-         @add(element)
-      @
+;;    add-all(elements) =
+;;       elements each element ->
+;;          @add(element)
+;;       @
 
-   add(element) =
-      key = @key-function(element)
-      if key > @_keys[@_keys.length - 1]:
-         ;; We usually append at the end
-         @_keys.push(key)
-         @_arr.push(element)
-      else:
-         {idx, found} = @_find-key-index(key)
-         if not found or @duplicate-keys:
-            @_keys.splice(idx, 0, key)
-            @_arr.splice(idx, 0, element)
-         else:
-            @_keys[idx] = key
-            @_arr[idx] = element
-      @
+;;    add(element) =
+;;       key = @key-function(element)
+;;       if key > @_keys[@_keys.length - 1]:
+;;          ;; We usually append at the end
+;;          @_keys.push(key)
+;;          @_arr.push(element)
+;;       else:
+;;          {idx, found} = @_find-key-index(key)
+;;          if not found or @duplicate-keys:
+;;             @_keys.splice(idx, 0, key)
+;;             @_arr.splice(idx, 0, element)
+;;          else:
+;;             @_keys[idx] = key
+;;             @_arr[idx] = element
+;;       @
 
-   .delete(element) =
-      key = @key-function(element)
-      if key === @_keys[@_keys.length - 1]:
-         @_keys.pop()
-         @_arr.pop()
-      else:
-         {idx, found} = @_find-key-index(key)
-         if found:
-            @_keys.splice(idx, 1)
-            @_arr.splice(idx, 1)
-         else:
-            print "~~~~~"
-            print @_arr
-            print element
-            throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
-      @
+;;    .delete(element) =
+;;       key = @key-function(element)
+;;       if key === @_keys[@_keys.length - 1]:
+;;          @_keys.pop()
+;;          @_arr.pop()
+;;       else:
+;;          {idx, found} = @_find-key-index(key)
+;;          if found:
+;;             @_keys.splice(idx, 1)
+;;             @_arr.splice(idx, 1)
+;;          else:
+;;             print "~~~~~"
+;;             print @_arr
+;;             print element
+;;             throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
+;;       @
 
-   delete-all(elements) =
-      elements each element ->
-         @delete(element)
-      @
+;;    delete-all(elements) =
+;;       elements each element ->
+;;          @delete(element)
+;;       @
 
-   find-index(element) =
-      @_find-key-index(@key-function(element))[0]
+;;    find-index(element) =
+;;       @_find-key-index(@key-function(element))[0]
 
-   _find-key-index(key) =
-      find-insert(@_keys, key)
+;;    _find-key-index(key) =
+;;       find-insert(@_keys, key)
 
-   gen [^Symbol.iterator]() =
-      @_arr each x -> yield x
-
-
-
+;;    gen [^Symbol.iterator]() =
+;;       @_arr each x -> yield x
 
 
 
-
-
-find-insert2(xs, x, cmp) =
+find-insert(xs, x, cmp) =
    var lo = 0
    var hi = xs.length - 1
    while lo <= hi:
@@ -168,7 +162,7 @@ find-insert2(xs, x, cmp) =
          else -> return {mid, true}
    {lo, false}
 
-class SortedArray2:
+class SortedArray:
 
    constructor(@compare) =
       @_arr = {}
@@ -219,7 +213,7 @@ class SortedArray2:
       @_find-index(element)[0]
 
    _find-index(element) =
-      find-insert2(@_arr, element, @compare)
+      find-insert(@_arr, element, @compare)
 
    gen [^Symbol.iterator]() =
       @_arr each x -> yield x
