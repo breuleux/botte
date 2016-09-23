@@ -15,65 +15,9 @@ require-macros:
       %, component
 
 provide:
-   ;; ChannelGroup
    ChannelSelector
    SubChannelSelector
    ChannelIndicator
-
-
-;; component ChannelGroup:
-;;    mixins = {ViewEvents}
-;;    get-initial-state() = {
-;;       selected = @props.view.active
-;;       label = @props.view.label()
-;;       channels = consume(@props.view.channels)
-;;       active-channel = @props.view.active-channel
-;;       talking = {=}
-;;    }
-;;    view-events() = {
-;;       set-active(state) =
-;;          @set-state with {selected = state}
-;;          if state:
-;;             @set-state with {talking = {=}, some-talking = false}
-;;       set-label(label) =
-;;          @set-state with {label = label}
-;;       add-channel(channel) =
-;;          @set-state with {channels = consume(@props.view.channels)}
-;;       remove-channel(channel) =
-;;          @set-state with {channels = consume(@props.view.channels)}
-;;       set-active-channel(channel) =
-;;          @set-state with {active-channel = channel}
-;;       add-message(m) =
-;;          if not @state.selected and m.type === .message and not @state.talking[m.channel]:
-;;             @set-state with {talking = @state.talking & {m.channel => .talking}
-;;                              some-talking = .talking}
-;;             set-timeout(___, 1000) with _ ->
-;;                @set-state with {talking = @state.talking & {m.channel => .talked}
-;;                                 some-talking = .talked}
-;;    }
-;;    render() =
-;;       .tab-group %
-;;          class-name = if{@state.selected, .selected, ""}
-;;          .tab-label %
-;;             class-name = if{@state.selected, .selected, ""}
-;;             .tab-label-activity %
-;;                class-name = @state.some-talking or 'not-talking'
-;;             shorten(@state.label)
-;;             on-click() =
-;;                if not @state.selected:
-;;                   @props.master.activate(@props.view)
-;;          @state.channels each
-;;             R"^/"? or (== @state.label) ->
-;;                continue
-;;             channel ->
-;;                .tab-channel %
-;;                   className = if{channel === @state.active-channel, .active, ""}
-;;                   .tab-channel-activity %
-;;                      class-name = @state.talking[channel] or 'not-talking'
-;;                   shorten(channel)
-;;                   on-click() =
-;;                      @props.master.activate(@props.view)
-;;                      @props.view.set-active-channel(channel)
 
 
 component ChannelSelector:
@@ -177,9 +121,6 @@ component ChannelIndicator:
             return
          if @props.master.focus === @props.view:
             return
-         ;; print #bah{@props.master.focus??.label
-         ;;            @props.view??.label
-         ;;            @props.master.focus === @props.view}
          m = ms[ms.length - 1]
          if m.type === .message:
             @set-state with {talking = .talking}

@@ -58,11 +58,9 @@ message-transformers = Object.assign(Object.create(null)) with {
       make-traffic.call(@, m.agent, #part{}, m)
 
    method quit(m) =
-      print '{m.agent} quits {m.channel}'
       if @users[m.agent]:
          make-traffic.call(@, m.agent, #quit{}, m)
       else:
-         print .rejected
          .reject
 
    method kick(m) =

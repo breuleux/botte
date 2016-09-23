@@ -3,47 +3,18 @@ require:
    .mixins ->
       MasterEvents, ViewEvents
    .message ->
-      ;; Messages
-      ;; Messages2
       ShardsetComponent
    .user ->
-      ;; Users
       ViewUsers
    .input ->
-      ;; Input
       Input2
-   ;; ..shard ->
-   ;;    Shardset
 
 require-macros:
    earl-react ->
       %, component
 
 provide:
-   ;; Tab
    Tab2
-
-
-;; component Tab:
-;;    mixins = {ViewEvents}
-;;    get-initial-state() = {
-;;       active = @props.view.active
-;;    }
-;;    view-events() = {
-;;       set-active(state) =
-;;          @set-state with {active = state}
-;;    }
-;;    render() =
-;;       .tab-window %
-;;          class-name = if{@state.active, .active, ""}
-;;          Messages %
-;;             view = @props.view
-;;          Users %
-;;             view = @props.view
-;;          Input %
-;;             master = @props.master
-;;             view = @props.view
-
 
 
 component Tab2:
@@ -58,9 +29,6 @@ component Tab2:
    render() =
       .tab-window %
          class-name = if{@state.active, .active, ""}
-         ;; Messages2 %
-         ;;    master = @props.master
-         ;;    view = @props.view
          ShardsetComponent %
             master = @props.master
             view = @props.view
