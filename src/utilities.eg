@@ -2,6 +2,8 @@
 require:
    lodash
    moment
+   md5
+   color-space -> lchab
 
 provide:
    is-channel
@@ -12,6 +14,22 @@ provide:
    shorten
    SortedArray
    find-insert
+   string-to-color
+
+
+color-cache = {=}
+
+string-to-color(s, sat, lig) =
+   if color-cache[s] as cached:
+      cached
+   else:
+      hash = md5(s)
+      hue = 360 * parse-int(hash[0...2], 16)/256
+      c = lchab.rgb({lig, sat, hue}) each v -> Math.floor(v)
+      colstring = 'rgb({c[0]}, {c[1]}, {c[2]})'
+      color-cache[s] = colstring
+      colstring
+
 
 mom(d) =
    moment(d, "YYYY-MM-DD hh:mm:ss")
@@ -72,83 +90,6 @@ parse-space-code(s) =
          return false
       result += c2
    result
-
-
-;; findInsert(xs, x) =
-;;    var lo = 0
-;;    var hi = xs.length - 1
-;;    while lo <= hi:
-;;       mid = lo + ((hi - lo) // 2)
-;;       match xs[mid]:
-;;          < x  -> lo = mid + 1
-;;          > x  -> hi = mid - 1
-;;          else -> return {mid, true}
-;;    {lo, false}
-
-
-;; class SortedArray:
-
-;;    constructor(@key-function, @duplicate-keys = true) =
-;;       @_arr = {}
-;;       @_keys = {}
-
-;;    populate(elements) =
-;;       @_arr = lodash.sort-by(elements, @key-function)
-;;       @_keys = lodash.sort-by(elements.map(@key-function))
-;;       @
-
-;;    add-all(elements) =
-;;       elements each element ->
-;;          @add(element)
-;;       @
-
-;;    add(element) =
-;;       key = @key-function(element)
-;;       if key > @_keys[@_keys.length - 1]:
-;;          ;; We usually append at the end
-;;          @_keys.push(key)
-;;          @_arr.push(element)
-;;       else:
-;;          {idx, found} = @_find-key-index(key)
-;;          if not found or @duplicate-keys:
-;;             @_keys.splice(idx, 0, key)
-;;             @_arr.splice(idx, 0, element)
-;;          else:
-;;             @_keys[idx] = key
-;;             @_arr[idx] = element
-;;       @
-
-;;    .delete(element) =
-;;       key = @key-function(element)
-;;       if key === @_keys[@_keys.length - 1]:
-;;          @_keys.pop()
-;;          @_arr.pop()
-;;       else:
-;;          {idx, found} = @_find-key-index(key)
-;;          if found:
-;;             @_keys.splice(idx, 1)
-;;             @_arr.splice(idx, 1)
-;;          else:
-;;             print "~~~~~"
-;;             print @_arr
-;;             print element
-;;             throw E.element-not-found('Element could not be deleted because it could not be found: {element}')
-;;       @
-
-;;    delete-all(elements) =
-;;       elements each element ->
-;;          @delete(element)
-;;       @
-
-;;    find-index(element) =
-;;       @_find-key-index(@key-function(element))[0]
-
-;;    _find-key-index(key) =
-;;       find-insert(@_keys, key)
-
-;;    gen [^Symbol.iterator]() =
-;;       @_arr each x -> yield x
-
 
 
 find-insert(xs, x, cmp) =
