@@ -8,6 +8,7 @@ require:
    ..utilities ->
       SortedArray
       compute-level
+      string-to-color
 
 require-macros:
    earl-react ->
@@ -98,11 +99,20 @@ component ChannelUsers:
    }
 
    render() =
-      .channel-users %
-         class-name = if{@state.focus === @props.channel, .focused, .unfocused}
-         @state.users each data ->
-            l = compute-level(data.modes)
-            span.user-name %
-               class-name = 'user-level-{l}'
-               data.nickname
+      div %
+         class-name = if{@state.focus === @props.channel, .visible, .invisible}
+         .channel-users-header %
+            .network-label %
+               style = {background = string-to-color(@props.channel.network, 100, 50)}
+               @props.channel.network
+            if @props.channel.short-name:
+               .channel-label %
+                  style = {color = string-to-color(@props.channel.short-name, 100, 50)}
+                  @props.channel.short-name
+         .channel-users %
+            @state.users each data ->
+               l = compute-level(data.modes)
+               span.user-name %
+                  class-name = 'user-level-{l}'
+                  data.nickname
 
