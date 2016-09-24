@@ -150,7 +150,6 @@ html, body, #mount, .main-window
 
 .users
   background: white
-  padding: 5px
   border-left: 2px solid black
   height: calc(100vh - 40px)
   overflow-y: auto
@@ -183,6 +182,7 @@ html, body, #mount, .main-window
   color: #aaa
   grid-column: 1 / span 1
   padding-right: 5px
+  white-space: nowrap
   /* overflow: hidden
 
 .message-source
@@ -500,6 +500,131 @@ a.website-card
   height: 100px
   background: red
 
-.channel-users.unfocused
+.channel-users
+  padding: 5px
+
+/* .channel-users.unfocused
+/*   display: none
+
+.invisible
   display: none
 
+/* .channel-users-header
+/*   margin-bottom: 8px
+
+.network-label
+  color: white
+  font-weight: bold
+  padding: 5px
+  /* margin-bottom: 8px
+
+.channel-label
+  color: white
+  font-weight: bold
+  padding: 5px
+  background: #eee
+
+
+.ircb
+  font-weight: bold
+.irci
+  font-style: italic
+.ircu
+  text-decoration: underline
+.ircr
+  color: white
+  background: black
+
+.ircfg-0
+  color: #FFFFFF
+.ircfg-1
+  color: #000000
+.ircfg-2
+  color: #00007F
+.ircfg-3
+  color: #009300
+.ircfg-4
+  color: #FF0000
+.ircfg-5
+  color: #7F0000
+.ircfg-6
+  color: #9C009C
+.ircfg-7
+  color: #FC7F00
+.ircfg-8
+  color: #FFFF00
+.ircfg-9
+  color: #00FC00
+.ircfg-10
+  color: #009393
+.ircfg-11
+  color: #00FFFF
+.ircfg-12
+  color: #0000FC
+.ircfg-13
+  color: #FF00FF
+.ircfg-14
+  color: #7F7F7F
+.ircfg-15
+  color: #D2D2D2
+
+.ircbg-0
+  background: #FFFFFF
+.ircbg-1
+  background: #000000
+.ircbg-2
+  background: #00007F
+.ircbg-3
+  background: #009300
+.ircbg-4
+  background: #FF0000
+.ircbg-5
+  background: #7F0000
+.ircbg-6
+  background: #9C009C
+.ircbg-7
+  background: #FC7F00
+.ircbg-8
+  background: #FFFF00
+.ircbg-9
+  background: #00FC00
+.ircbg-10
+  background: #009393
+.ircbg-11
+  background: #00FFFF
+.ircbg-12
+  background: #0000FC
+.ircbg-13
+  background: #FF00FF
+.ircbg-14
+  background: #7F7F7F
+.ircbg-15
+  background: #D2D2D2
+
+
+.channel-indicator
+  position: relative
+
+.close-button
+  display: none
+
+.channel-indicator:hover .close-button
+  display: block
+
+.close-button
+  position: absolute
+  padding-left: 5px
+  padding-right: 5px
+  top: 50%
+  right: 0px
+  transform: translateY(-50%)
+  color: #888
+
+.close-button:hover
+  color: black
+
+.close-button:before
+  content: "✖"
+
+.message.selected
+  background: #fafaff
