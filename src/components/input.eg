@@ -133,8 +133,9 @@ component Input:
                @set-state with {text = ""}
             input.chat-input %
                ref(elem) =
-                  if elem:
-                     elem.focus()
+                  if @props.master.focus === @props.view:
+                     global._botte_input = elem
+                     elem??.focus()
                value = @state.text
                on-change(e) =
                   @set-state with {text = e.target.value}
