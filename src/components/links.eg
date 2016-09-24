@@ -5,6 +5,8 @@ require:
    react-addons-pure-render-mixin as PureRender
    request-promise as rq
    open-graph as og
+   ..format -> output-formatters
+   escape-html
 
 require-macros:
    earl-react ->
@@ -173,4 +175,6 @@ expand-links(text) =
                   split
       }
       else ->
-         split
+         markup = output-formatters.irc(escape-html(split))
+         span %
+            dangerouslySetInnerHTML = {__html = markup}

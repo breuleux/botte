@@ -1,0 +1,27 @@
+
+provide:
+   output-formatters
+
+
+output-formatters = {
+   irc(s) =
+      chain s:
+         @replace(R.g"\x030*([0-9]+)(?:,0*([0-9]+))?([^\x03]*)(?=\x03|\x0f|$)") with
+            {_, fg, bg, txt} ->
+               '<span class="ircfg-{fg} ircbg-{bg or "x"}">{txt}</span>'
+         @replace(R.g"\x02([^\x02]*)(?:\x02|\x0f|$)") with
+            {_, txt} ->
+               '<span class="ircb">{txt}</span>'
+         @replace(R.g"\x16([^\x1d]*)(?:\x16|\x0f|$)") with
+            {_, txt} ->
+               '<span class="ircr">{txt}</span>'
+         @replace(R.g"\x1d([^\x1d]*)(?:\x1d|\x0f|$)") with
+            {_, txt} ->
+               '<span class="irci">{txt}</span>'
+         @replace(R.g"\x1f([^\x1f]*)(?:\x1f|\x0f|$)") with
+            {_, txt} ->
+               '<span class="ircu">{txt}</span>'
+}
+
+;; print output-formatters.irc("Hey \x034,3hello\x035,6there")
+;; print output-formatters.irc("Hey \x02\x1fhello\x02\x1f there \x02genius\x02")
