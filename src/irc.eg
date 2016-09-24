@@ -6,6 +6,7 @@ require:
    .source ->
       StreamSource
    .utilities ->
+      is-channel
       get-network as extract-network
       get-channel as extract-channel
    commander
@@ -49,11 +50,16 @@ commands = {
       chanarg-command.call(@, .action, .action, argument, m)
 
    method join(argument, _, m) =
+      if not is-channel(argument):
+         return null
       @client.join(argument)
       null
 
    method part(argument, channel, m) =
-      @client.part(argument or channel)
+      target = extract-channel(argument or channel)
+      if not is-channel(target):
+         return null
+      @client.part(target)
       null
 
    method nick(argument, _, m) =
@@ -86,12 +92,18 @@ command-aliases = {
 events = {
 
    method registered(m) =
-      ;; {
-      ;;    type = .nick
-      ;;    channel = ""
-      ;;    from = null
-      ;;    to = m.args[0]
-      ;; }
+      closer(type)() =
+         (keys(@client.chans) ++ {""}) each channel ->
+            @print-result with {
+               type = .quit
+               = channel
+               agent = @client.nick
+               self = true
+               connection-event = type
+               content = "Disconnected."
+            }
+      @client.conn.on(.end, closer(.end))
+      @client.conn.on(.close, closer(.close))
       @client.say("NickServ", 'id {@nickserv-password}')
       {
          type = .join
@@ -217,7 +229,7 @@ events = {
    method nick(oldnick, newnick, channels, m) =
       if not oldnick or oldnick === @nickname:
          @nickname = newnick
-      (channels ++ {oldnick}) each channel -> {
+      (channels ++ {oldnick, ""}) each channel -> {
          type = .nick
          = channel
          from = oldnick
@@ -314,7 +326,7 @@ class IRCClient:
          @client.add-listener(k) with {*args} ->
             @print-result(fn.call(@, *args))
 
-   process-message(message) =
+   process-command(message) =
       channel = extract-channel(message.channel)
       var cmd = message.command.to-lower-case()
       if command-aliases[cmd] as alias:
@@ -380,7 +392,7 @@ class Dispatcher:
             return
          network-name = extract-network(message.channel)
          network = @get-network(network-name)
-         network.process-message(message)
+         network.process-command(message)
 
 
 
