@@ -156,6 +156,12 @@ class SortedArray:
    _find-index(element) =
       find-insert(@_arr, element, @compare)
 
+   get(i) =
+      if i < 0:
+         @_arr[@_arr.length + i]
+      else:
+         @_arr[i]
+
    gen [^Symbol.iterator]() =
       @_arr each x -> yield x
 
