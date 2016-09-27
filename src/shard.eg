@@ -29,6 +29,30 @@ class Shardset < EventEmitter:
       @parts = {Shard(@adapter, @shard-capacity, null, null)}
       @id = uuid()
 
+   get-neighbours(element) =
+      key = @adapter.key(element)
+      {shard-index, found} = find-insert(@parts, key, shard-find)
+      shard = @parts[shard-index]
+      index = shard.locate(element)
+      previous =
+         if index > 0:
+            shard.elements.get(index - 1)
+         elif shard-index > 0:
+            @parts[shard-index - 1].elements.get(-1)
+         else:
+            null
+      next =
+         if shard.elements.get(index + 1) as m:
+            m
+         elif @parts[shard-index + 1] as next-shard:
+            next-shard.elements.get(0)
+         else:
+            null
+      {previous, next}
+
+   last-element() =
+      @parts[@parts.length - 1].elements.get(-1)
+
    locate(element) =
       key = @adapter.key(element)
       {index, found} = find-insert(@parts, key, shard-find)
@@ -102,6 +126,10 @@ class Shard < EventEmitter:
    constructor(@adapter, @capacity, @min = null, @max = null) =
       @elements = SortedArray(@adapter.compare)
       @current-min and @current-max = null
+      @id = uuid()
+
+   locate(element) =
+      @elements.find-index(element)
 
    reached-capacity() =
       @elements._arr.length >= @capacity
