@@ -172,11 +172,14 @@ class Interactor:
          code = "C-" + code
       code
 
+   getkey{e} =
+      '[{e.key}]'
+
    keyup{e} =
-      @process_codes{{"!^All", "^" + @getcode{e}, "^All"}, e}
+      @process_codes{{"!^All", "^" + @getcode{e}, "^" + @getkey{e}, "^All"}, e}
 
    keydown{e} =
-      @process_codes{{"!All", @getcode{e}, "All"}, e}
+      @process_codes{{"!All", @getcode{e}, @getkey{e}, "All"}, e}
 
    keypress{e} =
       key = e.which
