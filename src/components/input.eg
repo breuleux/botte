@@ -1,5 +1,6 @@
 
 require:
+   electron -> clipboard
    lodash
    .mixins ->
       MasterEvents
@@ -8,6 +9,8 @@ require:
       shorten
    ..kb ->
       Interactor
+   ..log ->
+      Logger
 
 require-macros:
    earl-react ->
@@ -17,22 +20,32 @@ provide:
    Input
 
 
+copy-logger = Logger with {timestamps = false}
+
 
 component Input:
    mixins = {ViewEvents}
 
-   get-initial-state() = {
-      last-active = {=}
-      tab-cycle = null
-      cycle-index = 0
-      text = ""
-      nickname = @props.view.focus??.nickname or "??"
-   }
+   get-initial-state() =
+      @_clear-cycle-timer or= lodash.debounce(@clear-cycle, 500)
+      {
+         last-active = {=}
+         interaction-mode = .typing
+         desired-channel = null
+         tab-cycle = null
+         cycle-index = 0
+         text = ""
+         nickname = @props.view.focus??.nickname or "??"
+      }
 
    clear-cycle() =
-      @set-state with {tab-cycle = null, cycle-index = 0}
+      @set-state with {
+         interaction-mode = .typing
+         tab-cycle = null
+         cycle-index = 0
+      }
 
-   compute-cycle(cursor-position) =
+   order-channels() =
       to-cycle = consume(@props.view.channels)
       chs = lodash.sort-by(to-cycle) with
          ch ->
@@ -40,22 +53,56 @@ component Input:
                "9999"
             else:
                @state.last-active[ch.full-name] or "0000"
-      chs.reverse() each ch -> f where f() =
+      chs.reverse()
+
+   order-nicknames(prefix) =
+      pfxl = prefix.to-lower-case()
+      candidates = {}
+      @order-channels() each ch ->
+         items(ch.users) each
+            {name, data} when name.to-lower-case().starts-with(pfxl) ->
+               candidates.push({ch, data})
+      candidates
+
+   compute-channel-cycle() =
+      @order-channels() each ch -> f where f() =
          @props.view.set-focus(ch)
 
-   cycle(direction = 1) =
-      @_clear-cycle-timer or= lodash.debounce(@clear-cycle, 500)
-      var idx = @state.cycle-index
-      var cyc = @state.tab-cycle
-      if not cyc:
-         cyc = @compute-cycle("")
+   compute-user-cycle(prefix, orig-text, idx) =
+      text0 = orig-text[... idx]
+      text1 = if{idx === 0, ": ", " "}
+              \ + orig-text[(idx + prefix.length) ...]
+      candidates = @order-nicknames(prefix)
+      fns = candidates each {ch, u} -> f where f() =
+         ;; print @state.text
+         ;; print idx
+         ;; print @state.text[... idx]
+         ;; print @state.text[(idx + prefix.length) ...]
+         @set-state with {
+            desired-channel = ch
+            text = text0 + u.nickname + text1
+         }
+      {revert} ++ fns where revert() =
+         @set-state with {
+            desired-channel = null
+            text = orig-text
+         }
+
+   cycle(cyc, idx, direction = 1) =
+      ;; @_clear-cycle-timer or= lodash.debounce(@clear-cycle, 500)
+      ;; var idx = @state.cycle-index
+      ;; var cyc = @state.tab-cycle
+      ;; if not cyc:
+      ;;    cyc = @compute-channel-cycle()
       next-idx = (idx + direction + cyc.length) mod cyc.length
       cyc[next-idx]()
-      if next-idx === 0:
-         @clear-cycle()
-      else:
-         @_clear-cycle-timer()
-         @set-state with {tab-cycle = cyc, cycle-index = next-idx}
+      ;; if next-idx === 0:
+      ;;    @clear-cycle()
+      ;; else:
+      ;;    ;; @_clear-cycle-timer()
+      @set-state with {tab-cycle = cyc
+                       cycle-index = next-idx
+                       interaction-mode = .tabbing}
 
    cycle-group(match direction = 1) =
       do:
@@ -90,27 +137,144 @@ component Input:
             @set-state with {
                last-active = @state.last-active & {m.channel => m.time}
             }
+      ;; select-message(m, mthod) =
+      ;;    new-text = @state.text.replace(R"^[^ ]*: *|^ *", if{m, '{m.agent}: ', ''})
+      ;;    @set-state with {
+      ;;       text = new-text
+      ;;       desired-channel = if{m and mthod === .keyboard
+      ;;                            m._pointers.channel
+      ;;                            @state.desired-channel}
+      ;;    }
    }
 
+
+   switch-to-tabbing(direction) =
+      match @state.interaction-mode:
+         .tabbing ->
+            @cycle(@state.tab-cycle, @state.cycle-index, direction)
+         else ->
+            idx-top = @_elem.selection-start
+            {_, prefix} = R"([^ ]*)$"! @state.text[... idx-top]
+            if prefix === "":
+               cyc = @compute-channel-cycle()
+               @cycle(cyc, 0, direction)
+               @_clear-cycle-timer()
+            else:
+               cyc = @compute-user-cycle with
+                  prefix, @state.text, idx-top - prefix.length
+               @cycle(cyc, 0, direction)
+
+
+   switch-to-typing(switch-to-desired = true) =
+      if switch-to-desired and @state.desired-channel:
+         @props.view.set-focus(@state.desired-channel)
+      @set-state with {
+         interaction-mode = .typing
+         desired-channel = null
+      }
+
    render() =
+      search-selectable(m, direction) =
+         v = @props.view
+         var sel = m
+         while v.get-message-data(sel)[direction] as sel:
+            if sel.selectable:
+               @props.view.select-message(sel, .keyboard)
+               return
+         v.select-message(null, .keyboard)
+         
       interactor = Interactor({=})
       interactor.set-bindings with {
+         "C-"() =
+            .break
+         "S-"() =
+            .break
+         "A-"() =
+            .break
+
          "Tab"() =
-            @cycle(1)
+            @switch-to-tabbing(1)
+            .break
          "S-Tab"() =
-            @cycle(-1)
+            @switch-to-tabbing(-1)
+            .break
+
          "C-Tab"() =
             @cycle-group(1)
+            .break
          "C-S-Tab"() =
             @cycle-group(-1)
+            .break
+
          "Up"() =
-            print "up"
+            v = @props.view
+            if v.selection as sel:
+               search-selectable(sel, .previous)
+            else:
+               let sel = v.shardset.last-element()
+               if sel.selectable:
+                  v.select-message(sel, .keyboard)
+               else:
+                  search-selectable(sel, .previous)
+            @set-state with {
+               interaction-mode = .navigation
+            }
+            .break
          "Down"() =
-            print "down"
-         "S-Up"() =
-            print "Sup"
-         "S-Down"() =
-            print "Sdown"
+            v = @props.view
+            if v.selection as (var sel):
+               search-selectable(sel, .next)
+            @set-state with {
+               interaction-mode = .navigation
+            }
+            .break
+
+         "Esc"() =
+            @props.view.select-message(null, .keyboard)
+            @set-state with {
+               interaction-mode = .typing
+               desired-channel = null
+            }
+            .break
+
+         "C-c"() =
+            match @state.interaction-mode:
+               .navigation ->
+                  if @props.view.selection as sel:
+                     text = copy-logger.format-message(sel)
+                     clipboard.write-text(text)
+                  .break
+               else ->
+                  .default
+
+         "[:]"() =
+            if @_elem.selection-start > 0:
+               .default
+            elif @props.view.selection as m:
+               new-text = @state.text.replace(R"^[^ ]*: *|^ *", if{m, '{m.agent}: ', ''})
+               @props.view.set-focus(m._pointers.channel)
+               @set-state with {
+                  text = new-text
+               }
+               .break
+            else:
+               .default
+
+         ;; "C-Space"() =
+         ;;    @switch-to-tabbing(1)
+         ;;    .break
+
+         "Backspace"() =
+            @switch-to-typing(false)
+            .default
+         "All"() =
+            @switch-to-typing()
+            .default
+
+         ;; "S-Up"() =
+         ;;    print "Sup"
+         ;; "S-Down"() =
+         ;;    print "Sdown"
       }
 
       .interact %
@@ -130,9 +294,14 @@ component Input:
                         command = .say
                         argument = text
                      }
-               @set-state with {text = ""}
+               @props.view.select-message(null, .submit)
+               @set-state with {
+                  text = ""
+                  interaction-mode = .typing
+               }
             input.chat-input %
                ref(elem) =
+                  @_elem = elem
                   if @props.master.focus === @props.view:
                      global._botte_input = elem
                      elem??.focus()

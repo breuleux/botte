@@ -33,6 +33,12 @@ component Tab:
             master = @props.master
             view = @props.view
             shardset = @props.view.shardset
+         ;; @props.view.channels each ch ->
+         ;;    ShardsetComponent %
+         ;;       master = @props.master
+         ;;       view = @props.view
+         ;;       shardset = @props.view.shardset
+         ;;       force-focus = ch
          ViewUsers %
             master = @props.master
             view = @props.view

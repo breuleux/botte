@@ -1,8 +1,6 @@
 
 require:
    react-dom as ReactDOM
-   color-space -> lchab
-   md5
    moment
    .mixins ->
       MasterEvents
@@ -14,10 +12,15 @@ require:
    ..utilities ->
       shorten
       SortedArray
+      string-to-color
    .links ->
       expand-links
    ..renderers ->
       message-renderers
+   ..format ->
+      output-formatters
+   ..master ->
+      compare-messages
 
 require-macros:
    earl-react ->
@@ -28,69 +31,72 @@ provide:
    ShardsetComponent
    ShardComponent
 
-color-cache = {=}
-
 
 MessageArray(messages) =
-   s = SortedArray with {m1, m2} ->
-      t1 = m1.start-time
-      t2 = m2.start-time
-      s1 = m1.seq-id
-      s2 = m2.seq-id
-      if t1 < t2:
-         -1
-      elif t1 > t2:
-         1
-      elif s1 < s2:
-         -1
-      elif s1 > s2:
-         1
-      else:
-         0
+   s = SortedArray(compare-messages)
    s.populate(messages)
 
 component Message:
    colorize-name(s) =
-      color =
-         if color-cache[s] as cached:
-            cached
-         else:
-            hash = md5(s)
-            lig = 50
-            sat = 100
-            hue = 360 * parse-int(hash[0...2], 16)/256
-            c = lchab.rgb({lig, sat, hue}) each v -> Math.floor(v)
-            colstring = 'rgb({c[0]}, {c[1]}, {c[2]})'
-            color-cache[s] = colstring
-            colstring
       span %
-         style = {color = color, font-weight = .bold}
+         style = {
+            color = string-to-color(s, 100, 50)
+            font-weight = .bold
+         }
          s
    show-message(channel, agent, content, extra-class = "") =
+      chname = shorten(channel)
       .message %
          class-name = extra-class
-         .message-channel % shorten(channel)
+         on-click(e) =
+            @props.view.select-message(@props.message, .click)
+         .message-channel %
+            style = {color = string-to-color(chname)}
+            chname            
          .message-source % if{@props.active, @colorize-name(agent), agent}
          .message-content %
             match content:
                String? -> expand-links(content)
                else -> content
    status-message(channel, content) =
+      chname = shorten(channel)
       .message %
-         .message-channel % shorten(channel)
+         .message-channel %
+            style = {color = string-to-color(chname)}
+            chname            
          .message-source % ""
          .message-content % content
    render() =
       r = message-renderers[@props.message.type]
           \ or message-renderers._unhandled
-      try:
-         r.call(@, @props.message) or (span % "")
-      catch e:
-         .message.error %
-            .message-source.error % "!RERROR!"
-            .message-content %
-               div % e.message
-               div % JSON.stringify(@props.message, true, 2)
+      is-selected = @props.view.get-message-data(@props.message).selected
+      contents =
+         try:
+            r.call(@, @props.message) or (span % "")
+         catch e:
+            .message.error %
+               .message-channel % ""
+               .message-source.error % "!RERROR!"
+               .message-content %
+                  div % e.message
+                  div % JSON.stringify(
+                     @props.message & {_pointers = undefined}
+                     true
+                     2
+                  )
+      .message-wrapper %
+         class-name = if{is-selected, .selected, ""}
+         contents
+         if is-selected:
+            then:
+               ;; .message.message-toolbar %
+               ;;    .message-channel % ""
+               ;;    .message-source % @props.message.time
+               ;;    .message-content %
+               ;;       "Copy?"
+               span % ""
+            else:
+               span % ""
 
 
 component ShardsetComponent:
@@ -98,8 +104,11 @@ component ShardsetComponent:
 
    get-initial-state() =
       @at-bottom = true
+      ff = @props.force-focus
       {
          shards = clone(@props.shardset.parts)
+         visible = not ff or ff === @props.view.focus
+         message-selected = false
       }
 
    update-scroll() =
@@ -113,6 +122,11 @@ component ShardsetComponent:
    view-events() = {
       scroll-change() =
          @update-scroll()
+      set-focus(_, channel) =
+         ff = @props.force-focus
+         @set-state with {visible = not ff or ff === channel}
+      select-message(m) =
+         @set-state with {message-selected = m !== null}
    }
 
    shardset-events() = {
@@ -126,16 +140,25 @@ component ShardsetComponent:
    }
 
    render() =
+      ;; print {@state.visible
+      ;;        @props.force-focus??.full-name
+      ;;        @props.view.focus??.full-name}
+      idx = Math.max(@state.shards.length - 10, 0)
       .messages %
+         class-name = if{@state.visible, .visible, .invisible}
          on-scroll() =
             node = ReactDOM.findDOMNode(@)
             @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight
-         @state.shards each shard ->
+         @state.shards[idx ...] each shard ->
             ShardComponent %
                key = shard.id
                shard = shard
                view = @props.view
                master = @props.master
+               force-focus = @props.force-focus
+         if @state.message-selected:
+            then: span % ""
+            else: .selection-stop-gap % ""
 
 
 component ShardComponent:
@@ -155,8 +178,8 @@ component ShardComponent:
          #delete{m} ->
             messages and new-state.messages = messages.delete(m)
          #focus{name} ->
-            changes = true
-            new-state.focus = name
+            if not @props.force-focus:
+               new-state.focus = name
       if new-state != {=}:
          @set-state(new-state)
 
@@ -184,14 +207,16 @@ component ShardComponent:
    }
 
    render() =
+      ;; print 'render shard {@props.shard.id}'
       .shard %
          @state.messages each m ->
-            active = m.channel === @state.focus
+            active = m.channel === (@props.force-focus??.full-name or @state.focus)
             result =
                div %
-                  ;; key = m.message-id
+                  key = m.message-id
                   className = if{active, "active-message", "inactive-message"}
                   Message %
                      active = active
                      message = m
+                     view = @props.view
             result

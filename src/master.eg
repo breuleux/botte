@@ -6,13 +6,16 @@ require:
       is-channel
       get-channel
       get-network
+      find-insert
    .messages ->
       message-transformers
       message-mergers
    .shard ->
       Shardset
+      
 
 provide:
+   compare-messages
    Channel
    View
    Dispatcher
@@ -21,6 +24,24 @@ provide:
 var __id = 0
 next-id() =
    __id += 1
+
+
+
+compare-messages(m1, m2) =
+   t1 = m1.start-time
+   t2 = m2.start-time
+   s1 = m1.seq-id
+   s2 = m2.seq-id
+   if t1 < t2:
+      -1
+   elif t1 > t2:
+      1
+   elif s1 < s2:
+      -1
+   elif s1 > s2:
+      1
+   else:
+      0
 
 
 class Channel < EventEmitter:
@@ -175,6 +196,7 @@ class Channel < EventEmitter:
       if not m3:
          {m1, m2}
       else:
+         m3._pointers = m1._pointers
          m3.message-id = uuid()
          m3.seq-id = next-id()
          m3.start-time = m1.start-time or m1.time
@@ -185,16 +207,22 @@ class Channel < EventEmitter:
 
    ;; Message stream
 
-   append-message(m) =
-      @messages.push(m)
-      @emit(.add-messages, {m})
-
-   insert-message(m, i) =
+   _insert-message(m, i) =
       @messages.splice(i, 0, m)
       @emit(.add-messages, {m})
 
-   delete-message(i) =
+   _delete-message(i) =
       @emit(.delete-messages, @messages.splice(i, 1))
+
+   add-message(m) =
+      {idx, found} = find-insert(@messages, m, compare-messages)
+      if not found:
+         @_insert-message(m, idx)
+
+   delete-message(m) =
+      {idx, found} = find-insert(@messages, m, compare-messages)
+      if found:
+         @_delete-message(idx)
 
    find-latch(m) =
       ;; This can be used to make slight adjustments to message order
@@ -210,18 +238,22 @@ class Channel < EventEmitter:
          m2 = @messages[idx]
          match @merge-messages(m2, m):
             {_, _} ->
-               @insert-message(m, orig)
+               @_insert-message(m, orig)
             {nm} ->
-               @delete-message(idx)
+               @_delete-message(idx)
                @incorporate-message(nm, idx)
       else:
-         @insert-message(m, orig)
+         @_insert-message(m, orig)
 
    ;; Processing a message
 
    process-message(m) =
       m2 = @transform-message(m)
       if m2:
+         m2._pointers = {
+            channel = @
+            view-data = new Map()
+         }
          @incorporate-message(m2)
          @update-from-message(m)
 
@@ -248,6 +280,7 @@ class View < EventEmitter:
       @channels = new Set()
       @focus = null
       @nickname = null
+      @selection = null
 
       ;; Event handlers to install on focus
       @focus-event-handlers = {
@@ -260,9 +293,22 @@ class View < EventEmitter:
          add-messages(ms) =
             ;; TODO: error handling
             @shardset.add-all(ms)
+            ms each m ->
+               {p, n} = @shardset.get-neighbours(m)
+               if p:
+                  @get-message-data(p).next = m
+               if n:
+                  @get-message-data(n).previous = m
+               @get-message-data(m) &: {previous = p, next = n}
             @emit(.add-messages, ms)
          delete-messages(ms) =
             ;; TODO: error handling
+            ms each m ->
+               {p, n} = @shardset.get-neighbours(m)
+               if p:
+                  @get-message-data(p).next = n
+               if n:
+                  @get-message-data(n).previous = p
             @shardset.delete-all(ms)
             @emit(.delete-messages, ms)
       }
@@ -274,17 +320,7 @@ class View < EventEmitter:
             m.start-time
          high(m) =
             m.start-time
-         compare(m1, m2) =
-            if m1.start-time < m2.start-time:
-               -1
-            elif m1.start-time > m2.start-time:
-               1
-            elif m1.seq-id < m2.seq-id:
-               -1
-            elif m1.seq-id > m2.seq-id:
-               1
-            else:
-               0
+         compare = compare-messages
       }
 
    set-label(new-label) =
@@ -318,6 +354,39 @@ class View < EventEmitter:
          @emit(.set-nickname, null, @focus.nickname)
          @nickname = @focus.nickname
 
+   get-message-data(m) =
+      if not m._pointers:
+         print #nopointers{m}
+         return {selected = false}
+      vd = m._pointers.view-data
+      if vd.get(@) as data:
+         data
+      else:
+         let data = {selected = false}
+         vd.set(@, data)
+         data
+
+   _unselect() =
+      if @selection as message:
+         ch = message._pointers.channel
+         ch.delete-message(message)
+         ;; TODO: no mutation
+         @get-message-data(message).selected = false
+         ch.add-message(message)
+      @selection = null
+
+   select-message(message, mthod) =
+      @_unselect()
+      if message and message.selectable:
+         if message._pointers.channel as ch:
+            ch.delete-message(message)
+            @get-message-data(message).selected = true
+            ch.add-message(message)
+            @selection = message
+         if mthod === .click:
+            @set-focus(message._pointers.channel)
+      @emit(.select-message, message, mthod)
+
    add-channel(channel) =
       @emit(.add-channel, channel)
       items(@general-event-handlers) each {name, fn} ->
@@ -334,12 +403,32 @@ class View < EventEmitter:
          channel.remove-listener(name, fn)
       @emit(.delete-messages, channel.messages)
       @shardset.delete-all(channel.messages)
-      @channels.remove(channel)
+      @channels.delete(channel)
       if @focus === channel:
-         @set-focus(null)
+         @set-focus(consume(@channels)[0] or null)
+
+   process-command(m and {command => match}) =
+      .part when m.remove-from-view ->
+         @remove-channel(@focus)
+         m
+      .bring ->
+         m & {into = @}
+      .open ->
+         if @focus:
+            ;; TODO: extract the network-completing part
+            m & {command = .join
+                 into = @
+                 argument = '{@focus.network}/{m.argument}'}
+         else:
+            false
+      else ->
+         m
 
    send(m) =
-      @focus.send(m)
+      if @process-command(m) as m2:
+         if @focus and not m2.channel:
+            m2.channel = @focus.full-name
+         @master.send(m2)
 
 
 class Dispatcher < EventEmitter:
@@ -359,6 +448,9 @@ class Dispatcher < EventEmitter:
    view-trigger(m) =
       m.type in {.join, .message, .action, .motd}
 
+   irrelevant-for-view(m) =
+      not m or m.type in {.part}
+
    add-view(label = null, matcher = null) =
       view = View(@, label, matcher)
       items(@channels) each {_, ch} ->
@@ -370,21 +462,34 @@ class Dispatcher < EventEmitter:
          @set-focus(view)
       view
 
-   open-channel(channel, m = null) =
-      if not @channels[channel]:
+   get-channel(channel) =
+      rval = @channels[channel]
+      if not rval:
          ch = Channel(@, channel, message-transformers, message-mergers)
          @channels[channel] = ch
-         targets = @views each v when v.accepts(ch) -> v
+         ch
+      else:
+         rval
+
+   channel-has-view(channel) =
+      @views.some with view -> view.channels.has(channel)
+
+   open-channel(channel-name, m = null, target-view = null) =
+      channel = @get-channel(channel-name)
+      if target-view:
+         target-view.add-channel(channel)
+      elif not @channel-has-view(channel) and not @irrelevant-for-view(m):
+         targets = @views each v when v.accepts(channel) -> v
          if targets.length === 0:
             if not m or @view-trigger(m):
                view = @add-view(null)
-               view.add-channel(ch)
-            elif ch.transform-message(m) as m2:
+               view.add-channel(channel)
+            elif channel.transform-message(m) as m2:
                @emit(.unattached-message, m2)
          else:
             targets each v ->
-               v.add-channel(ch)
-      @channels[channel]
+               v.add-channel(channel)
+      channel
 
    process(new-message) =
       if not new-message:
@@ -392,8 +497,26 @@ class Dispatcher < EventEmitter:
       ch = @open-channel(new-message.channel, new-message)
       ch.process-message(new-message)
 
+   process-command(m and {command => match}) =
+      .join ->
+         if m.into:
+            @open-channel(m.argument, null, m.into)
+         m & {into = undefined}
+      .bring ->
+         @views each view when view !== m.into ->
+            view.channels each ch ->
+               if ch.full-name === m.argument
+                  \ or ch.short-name === m.argument:
+                  view.remove-channel(ch)
+                  m.into.add-channel(ch)
+                  return false
+         false
+      else ->
+         m
+
    send(message) =
-      @source.send(message)
+      if @process-command(message) as m:
+         @source.send(m)
 
    async run() =
       while true:

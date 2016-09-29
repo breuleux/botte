@@ -122,11 +122,14 @@ message-renderers = Object.assign(Object.create(null)) with {
          .message-source.unhandled % "!ERROR!"
          .message-content %
             div % m.error.message
-            div % JSON.stringify(m.message, null, 2)
+            div % stringify-message(m.message)
 
    method _unhandled(m) =
       .message.unhandled %
          .message-channel % shorten(m.channel)
          .message-source.unhandled % "!UNHANDLED!"
-         .message-content % JSON.stringify(@props.message, null, 2)
+         .message-content % stringify-message(m)
 }
+
+stringify-message(m) =
+   JSON.stringify(m & {_pointers = undefined}, null, 2)

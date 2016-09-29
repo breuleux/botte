@@ -37,6 +37,12 @@ method make-traffic(nickname, entry, m) =
    }
 
 
+make-selectable(m) =
+   if m.selectable:
+      m
+   else:
+      m & {selectable = true}
+
 message-transformers = Object.assign(Object.create(null)) with {
 
    method add-mode(m) =
@@ -71,6 +77,12 @@ message-transformers = Object.assign(Object.create(null)) with {
          make-traffic.call(@, m.to, #nick{m.from, m.to}, m)
       else:
          .reject
+
+   method message(m) =
+      make-selectable(m)
+
+   method action(m) =
+      make-selectable(m)
 
    method _other(m) =
       m
@@ -116,6 +128,7 @@ message-mergers = Object.assign(Object.create(null)) with {
             content = m1.content + "\n" + m2.content
             format = m1.format
             time = m2.time
+            selectable = true
          }
 
    method _other(m1, m2) =
