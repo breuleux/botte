@@ -15,7 +15,7 @@ require:
       string-to-color
    .links ->
       expand-links
-   ..renderers ->
+   .renderers ->
       message-renderers
    ..format ->
       output-formatters
