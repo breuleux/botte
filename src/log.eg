@@ -1,0 +1,64 @@
+
+require:
+   path
+   fs
+   mkdirp
+
+provide:
+   Logger
+
+
+log-formatters = Object.assign(Object.create(null)) with {
+   method message(m) =
+      '<{m.agent}> {m.content}'
+   method notice(m) =
+      '[notice] <{m.agent}> {m.content}'
+   method action(m) =
+      '* {m.agent} {m.content}'
+   method join(m) =
+      '* {m.agent} joined'
+   method part(m) =
+      '* {m.agent} left'
+   method quit(m) =
+      '* {m.agent} quit ({m.content})'
+   method kick(m) =
+      '* {m.agent} kicked {m.kicked} ({m.content})'
+   method nick(m) =
+      '* {m.from} changed nickname to {m.to}'
+   method add-mode(m) =
+      '* {m.agent} set mode +{m.mode} {m.argument or ""}'
+   method remove-mode(m) =
+      '* {m.agent} set mode -{m.mode} {m.argument or ""}'
+   method topic(m) =
+      'TOPIC: {m.content} ({m.agent})'
+   method names(m) =
+      null
+   method _other(m) =
+      '[Unhandled message. Type: {m.type}]'
+}
+
+
+class Logger:
+
+   constructor(options, @formatters = log-formatters) =
+      @options = defaults & options where defaults = {
+         timestamps = true
+      }
+
+   format-message(m) =
+      fn = @formatters[m.type] or @formatters._other
+      var rval = fn(m)
+      if rval and @options.timestamps:
+         rval = '[{m.time}] {rval}'
+      rval
+
+   log(m) =
+      entry = @format-message(m)
+      if not entry or not m.channel:
+         return
+      rel = m.channel.replace(R.g":/+", "/").split("/")
+      d = path.join(@options.root, *rel[... -1])
+      mkdirp.sync(d)
+      p = path.join(@options.root, *rel) + '.log'
+      fs.append-file-sync(p, entry + "\n")
+

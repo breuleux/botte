@@ -10,6 +10,8 @@ require:
       get-network as extract-network
       get-channel as extract-channel
    commander
+   .log ->
+      Logger
 
 
 method here-command(mthd, cmd, argument, channel, m) =
@@ -105,6 +107,7 @@ events = {
       @client.conn.on(.end, closer(.end))
       @client.conn.on(.close, closer(.close))
       @client.say("NickServ", 'id {@nickserv-password}')
+      @nickname = @client.nick
       {
          type = .join
          channel = ""
@@ -292,6 +295,7 @@ class IRCClient:
       }
       @pms = new Set()
       @install-handlers()
+      @log = @settings.log
 
    fudge(m) =
       if not m.agent:
@@ -319,7 +323,9 @@ class IRCClient:
    print-result(result) =
       if result:
          (Array! result) each entry ->
-            print JSON.stringify(@augment(entry), null, 2)
+            m = @augment(entry)
+            @log.log(m)
+            print JSON.stringify(m, null, 2)
 
    install-handlers() =
       items(events) each {k, fn} ->
@@ -340,11 +346,14 @@ class IRCClient:
 
 class Dispatcher:
 
-   constructor(in-stream, configurations, @defaults) =
+   constructor(in-stream, @settings) =
+      configurations = @settings.networks
+      @defaults = @settings.network-defaults
       @in-stream = StreamSource(in-stream, null)
       @networks = {=}
       @configurations = {=}
       @aliases = {=}
+      @log = Logger({root = @settings.log-directory})
       items(configurations or {=}) each {alias, cfg} ->
          url = cfg.url or alias
          if url !== alias:
@@ -367,6 +376,7 @@ class Dispatcher:
          user-name = cfg.user-name
          real-name = cfg.real-name
          nickserv-password = cfg.password
+         log = @log
       }
       @networks[cfg.url] = nw
       nw
@@ -381,6 +391,7 @@ class Dispatcher:
          user-name = cfg.user-name
          real-name = cfg.real-name
          nickserv-password = cfg.password
+         log = @log
       }
       @networks[cfg.url] = nw
       nw      
@@ -407,7 +418,7 @@ async main() =
 
    settings = JSON.parse(fs.read-file-sync(cli-options.settings, .utf8))
 
-   d = Dispatcher(process.stdin, settings.networks, settings.network-defaults)
+   d = Dispatcher(process.stdin, settings)
 
    if settings.join-groups:
       connections = {=}
