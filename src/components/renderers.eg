@@ -1,11 +1,11 @@
 
 require:
-   .utilities ->
+   ..utilities ->
       compute-level
       get-network
       shorten
    lodash
-   .components/links ->
+   .links ->
       expand-links
 
 require-macros:
