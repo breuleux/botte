@@ -120,6 +120,13 @@ component ShardsetComponent:
       @update-scroll()
 
    view-events() = {
+      scroll(n, unit) =
+         if @_elem:
+            pixels = n *
+               match unit:
+                  .page -> @_elem.offset-height
+                  else -> 1
+            @_elem.scroll-top += pixels
       scroll-change() =
          @update-scroll()
       set-focus(_, channel) =
@@ -146,6 +153,8 @@ component ShardsetComponent:
       idx = Math.max(@state.shards.length - 10, 0)
       .messages %
          class-name = if{@state.visible, .visible, .invisible}
+         ref(elem) =
+            @_elem = elem
          on-scroll() =
             node = ReactDOM.findDOMNode(@)
             @at-bottom = (node.scrollTop + node.offsetHeight) >= node.scrollHeight

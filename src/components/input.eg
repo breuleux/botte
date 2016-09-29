@@ -271,6 +271,11 @@ component Input:
             @switch-to-typing()
             .default
 
+         "PgUp"() =
+            @props.view.emit(.scroll, -1, .page)
+         "PgDn"() =
+            @props.view.emit(.scroll, 1, .page)
+
          ;; "S-Up"() =
          ;;    print "Sup"
          ;; "S-Down"() =
