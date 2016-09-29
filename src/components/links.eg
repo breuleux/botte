@@ -25,6 +25,10 @@ ExpanderComponent = {
    method render() =
       image = if{@state.open, @opened-icon or "base/cross", @closed-icon}
       span %
+         on-click(e) =
+            ;; This is to avoid selecting the message when the link or
+            ;; the expander icon or the expanded content are clicked
+            e.stop-propagation()
          if not @state.hide-link: {
             a %
                href = @props.href
@@ -171,6 +175,8 @@ expand-links(text) =
             ;;       open = false
             else ->
                a %
+                  on-click(e) =
+                     e.stop-propagation()
                   href = split
                   split
       }
