@@ -34,7 +34,7 @@ method chanarg-command(mthd, cmd, argument, m) =
       content = content
    }
 
-commands = {
+commands = Object.assign(Object.create(null)) with {
 
    method say(argument, channel, m) =
       here-command.call(@, .say, .message, argument, channel, m)
@@ -75,7 +75,8 @@ commands = {
    method _other(argument, channel, m) =
       @fudge with {
          type = .unknown-command
-         channel = channel
+         channel = m.channel
+         agent = @nickname
          command = m.command
          argument = m.argument
       }
@@ -121,12 +122,14 @@ events = {
       content = text
    }
 
-   method names(channel, nicks) = {
-      type = .names
-      = channel
-      content = object with items(nicks) each {nick, level} ->
-         {nick, {operator-level = level}}
-   }
+   method names(channel, nicks) =
+      @users[channel] = new Set(keys(nicks))
+      {
+         type = .names
+         = channel
+         content = object with items(nicks) each {nick, level} ->
+            {nick, {operator-level = level}}
+      }
 
    method topic(channel, topic, agent, message) = {
       type = .topic
@@ -134,38 +137,48 @@ events = {
       content = topic
    }
 
-   method join(channel, agent, m) = {
-      type = .join
-      = channel, = agent
-      self = agent === @client.nick
-   }
+   method join(channel, agent, m) =
+      @add-user(channel, agent)
+      {
+         type = .join
+         = channel, = agent
+         self = agent === @client.nick
+      }
 
-   method part(channel, agent, m) = {
-      type = .part
-      = channel, = agent
-      self = agent === @client.nick
-   }
+   method part(channel, agent, m) =
+      @delete-user(channel, agent)
+      {
+         type = .part
+         = channel, = agent
+         self = agent === @client.nick
+      }
 
    method quit(agent, reason, channels, m) =
-      channels each channel -> {
-         type = .quit
+      @channels-with-user(agent) each channel ->
+         @delete-user(channel, agent)
+         {
+            type = .quit
+            = channel, = agent
+            content = reason
+         }
+
+   method kick(channel, nick, agent, reason, m) =
+      @delete-user(channel, nick)
+      {
+         type = .kick
          = channel, = agent
+         kicked = nick
          content = reason
       }
-
-   method kick(channel, nick, agent, reason, m) = {
-      type = .kick
-      = channel, = agent
-      kicked = nick
-      content = reason
-   }
 
    method kill(agent, reason, channels, m) =
-      channels each channel -> {
-         type = .kill
-         = channel, = agent
-         content = reason
-      }
+      @channels-with-user(agent) each channel ->
+         @delete-user(channel, agent)
+         {
+            type = .kill
+            = channel, = agent
+            content = reason
+         }
 
    method message(agent, channel, text, _) =
       m = @fudge with {
@@ -232,12 +245,15 @@ events = {
    method nick(oldnick, newnick, channels, m) =
       if not oldnick or oldnick === @nickname:
          @nickname = newnick
-      (channels ++ {oldnick, ""}) each channel -> {
-         type = .nick
-         = channel
-         from = oldnick
-         to = newnick
-      }
+      (@channels-with-user(oldnick) ++ {oldnick, ""}) each channel ->
+         @delete-user(channel, oldnick)
+         @add-user(channel, newnick)
+         {
+            type = .nick
+            = channel
+            from = oldnick
+            to = newnick
+         }
 
    method invite(*args) =
       @unhandled('invite', args)
@@ -279,7 +295,6 @@ events = {
 class IRCClient:
 
    constructor(@network, @settings) =
-      ;; @in-stream = StreamSource(in-stream, null)
       @settings as {
          nickname => @nickname
          => channels
@@ -294,8 +309,18 @@ class IRCClient:
          = channels
       }
       @pms = new Set()
+      @users = {=}
       @install-handlers()
       @log = @settings.log
+
+   add-user(channel, name) =
+      (@users[channel] or= (new Set())).add(name)
+
+   delete-user(channel, name) =
+      (@users[channel] or= (new Set())).delete(name)
+
+   channels-with-user(name) =
+      items(@users) each {ch, s} when s.has(name) -> ch
 
    fudge(m) =
       if not m.agent:
@@ -306,8 +331,10 @@ class IRCClient:
       m
 
    augment(message) =
-      message.channel = '{@network-prefix}/{ch.replace(R.g"/", "\\/")}' where
-         ch = message.channel or ""
+      message.channel or= ""
+      if not message.channel.starts-with(@network-prefix):
+         message.channel = '{@network-prefix}/{ch.replace(R.g"/", "\\/")}' where
+            ch = message.channel
       message.format = "irc"
       message.time = moment().format("YYYY-MM-DD HH:mm:ss")
       message
@@ -342,6 +369,10 @@ class IRCClient:
       fn = commands[cmd] or commands._other
       result = fn.call(@, message.argument, channel, message)
       @print-result(result)
+
+   disconnect() =
+      ;; TODO: log quit message for self
+      @client.disconnect()
 
 
 class Dispatcher:
@@ -400,6 +431,10 @@ class Dispatcher:
       while true:
          message = await @in-stream.next()
          if not message:
+            console.error with "DONE!"
+            items(@networks) each {name, client} ->
+               console.error with 'Disconnect from {name}'
+               client.disconnect()
             return
          network-name = extract-network(message.channel)
          network = @get-network(network-name)
@@ -431,6 +466,7 @@ async main() =
       items(connections) each {nw, channels} ->
          d.connect(nw, channels)
 
-   d.run()
+   await d.run()
+   process.exit(0)
 
 async: main()
