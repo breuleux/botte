@@ -9,6 +9,8 @@ require:
       shorten
    ..master ->
       View
+   .kb ->
+      getcode
 
 require-macros:
    earl-react ->
@@ -18,6 +20,9 @@ provide:
    ChannelSelector
    SubChannelSelector
    ChannelIndicator
+
+globals:
+   document
 
 
 component ChannelSelector:
@@ -30,6 +35,8 @@ component ChannelSelector:
    master-events() = {
       add-view(view) =
          @set-state with {views = @state.views ++ {view}}
+      delete-view(view) =
+         @set-state with {views = @state.views each v when v !== view -> v}
    }
 
    render() =
@@ -71,22 +78,25 @@ component SubChannelSelector:
       head-channel = if{@state.label, @props.view, @state.focus}
       if not head-channel:
          return span % ""
-      .tab-group %
-         class-name = if{@state.selected, .selected, ""}
-         ChannelIndicator %
-            class-name = 'tab-label'
-            channel = head-channel
-            view = @props.view
-            master = @props.master
-            perma-focus = @state.selected
-         @state.channels each ch when ch !== head-channel ->
+      if @state.channels.length === 0 and not @props.view.always-show:
+         span % ""
+      else:
+         .tab-group %
+            class-name = if{@state.selected, .selected, ""}
             ChannelIndicator %
-               key = 'ssel-{ch.id}'
-               class-name = 'tab-channel'
-               channel = ch
+               class-name = 'tab-label'
+               channel = head-channel
                view = @props.view
                master = @props.master
-               focus = (ch === @state.focus)
+               perma-focus = @state.selected
+            @state.channels each ch when ch !== head-channel ->
+               ChannelIndicator %
+                  key = 'ssel-{ch.id}'
+                  class-name = 'tab-channel'
+                  channel = ch
+                  view = @props.view
+                  master = @props.master
+                  focus = (ch === @state.focus)
 
 
 component ChannelIndicator:
@@ -100,6 +110,8 @@ component ChannelIndicator:
       focus = @props.focus
       label = @get-label()
       talking = "not-talking"
+      editing = false
+      temp-name = ""
    }
 
    master-events() = {
@@ -111,6 +123,8 @@ component ChannelIndicator:
    view-events() = {
       set-focus(_, channel) =
          @set-state with {focus = channel === @props.channel}
+      set-label(_, new-label) =
+         @set-state with {label = new-label or @get-label()}
    }
 
    channel-events() = {
@@ -129,6 +143,7 @@ component ChannelIndicator:
    }
 
    render() =
+      is-view = View? @props.channel
       selected = match @props.perma-focus:
          undefined? -> @state.focus
          v -> v
@@ -139,17 +154,46 @@ component ChannelIndicator:
          }.join(" ")
          .tab-channel-activity %
             class-name = @state.talking
-         @state.label
+         if is-view and @state.editing:
+            then:
+               input %
+                  ref(elem) =
+                     if elem and document.active-element !== elem:
+                        elem.focus()
+                        elem.set-selection-range(0, elem.value.length)
+                  on-blur(e) =
+                     @props.view.set-label(@state.temp-name)
+                     @set-state with {editing = false, temp-name = ""}
+                  on-click(e) =
+                     e.stop-propagation()
+                  on-key-down(e) =
+                     e.stop-propagation()
+                     match getcode(e):
+                        "Enter" ->
+                           @props.view.set-label(@state.temp-name)
+                           @set-state with {editing = false, temp-name = ""}
+                        "Esc" ->
+                           @set-state with {editing = false, temp-name = ""}
+                        else ->
+                           pass
+                  on-change(e) =
+                     @set-state with {temp-name = e.target.value}
+                  value = @state.temp-name
+            else:
+               @state.label
          .close-button %
             on-click() =
-               @props.view.send with {
-                  command = .part
-                  argument = @props.channel.full-name
-                  channel = @props.channel.full-name
-                  remove-from-view = true
-               }
+               if is-view:
+                  @props.view.destroy()
+               else:
+                  @props.view.part(@props.channel)
          on-click() =
             @props.master.set-focus(@props.view)
-            if not View? @props.channel:
+            if not is-view:
                @props.view.set-focus(@props.channel)
+         on-double-click() =
+            @set-state with {
+               editing = true
+               temp-name = @props.view.label or ""
+            }
 

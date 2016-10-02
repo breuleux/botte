@@ -418,6 +418,20 @@ class View < EventEmitter:
       @channels.delete(channel)
       if @focus === channel:
          @set-focus(consume(@channels)[0] or null)
+      if not @always-show and @matcher === null:
+         @master.delete-view(@)
+
+   part(channel) =
+      @send with {
+         command = .part
+         argument = channel.full-name
+         channel = channel.full-name
+         remove-from-view = true
+      }
+
+   destroy() =
+      @channels each ch -> @part(ch)
+      @master.delete-view(@)
 
    process-command(m and {command => match}) =
       .part when m.remove-from-view ->
@@ -473,6 +487,10 @@ class Dispatcher < EventEmitter:
       if @focus === null:
          @set-focus(view)
       view
+
+   delete-view(view) =
+      @views = @views each v when v !== view -> v
+      @emit(.delete-view, view)
 
    get-channel(channel) =
       rval = @channels[channel]

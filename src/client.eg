@@ -37,8 +37,9 @@ setup(options) =
    let master = Dispatcher(src)
 
    items(options.settings.client.groups) each
-      {label, channels} ->
+      {label, {=> channels, => always-show = false}} ->
          view = master.add-view(label, channels)
+         view.always-show = always-show
 
    ReactDOM.render(a, options.mount) where a =
       ChatApp %
