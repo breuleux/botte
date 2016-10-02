@@ -10,7 +10,7 @@ require:
    open
 
 var main-window = null
-
+var proc = null
 
 remove-xframe-options-header(d, c) =
    if (d.response-headers['x-frame-options']):
@@ -75,8 +75,9 @@ create-window() =
 app.on('ready', create-window)
 
 app.on("window-all-closed") with {} ->
+   proc.stdin.end()
    if process.platform !== .darwin:
-      app.quit{}
+      app.quit()
 
 app.on(.activate) with {} ->
    if main-window === null:
