@@ -1,0 +1,188 @@
+
+require:
+   fs
+   .utilities ->
+      is-channel
+      get-network as extract-network
+      get-channel as extract-channel
+   .source ->
+      StreamSource
+   moment
+   lodash
+
+pick(list) =
+   idx = Math.floor(Math.random() * list.length)
+   list[idx]
+
+ri(min = 0, max) =
+   Math.floor(Math.random() * (max - min) + min)
+
+capitalize(w) =
+   w[0].to-upper-case() + w[1..]
+
+dict-file = "/etc/dictionaries-common/words"
+words = fs.read-file-sync(dict-file, .utf8).split("\n") each
+   R"s$"? -> continue
+   "" -> continue
+   w -> w
+
+gen-sentence(n) =
+   ws.join(" ") where ws =
+      1..n each i -> pick(words)
+
+gen-name(match n) =
+   <= 1 ->
+      capitalize(pick(words))
+   else ->
+      gen-name(1) + gen-name(n - 1)
+
+
+class Generator:
+
+   constructor(in-stream, @instructions) =
+      @network-prefix = "gen://generator"
+      @nickname = gen-name(1)
+      @in-stream = StreamSource(in-stream, null)
+      @users = {=}
+
+   augment(message) =
+      message.channel or= ""
+      if not message.channel.starts-with(@network-prefix):
+         message.channel = '{@network-prefix}/{ch.replace(R.g"/", "\\/")}' where
+            ch = message.channel
+      message.format = "irc"
+      message.time = moment().format("YYYY-MM-DD HH:mm:ss")
+      message
+
+   make-chan(name, users = {}) =
+      @users[name] = new Set(users)
+      {
+         {
+            type = .join
+            agent = @nickname
+            channel = name
+            self = true
+         }
+         {
+            type = .names
+            channel = name
+            content = object with (users ++ {@nickname}) each u ->
+               {u, {operator-level = ""}}
+         }
+      }
+
+   join(channel, user) =
+      @users[channel].add(user)
+      {
+         type = .join
+         agent = user
+         channel = channel
+      }
+
+   part(channel, user) =
+      @users[channel].delete(user)
+      {
+         type = .part
+         agent = user
+         channel = channel
+         content = "departed"
+      }
+
+   message(channel, user, text) =
+      {
+         type = .message
+         channel = channel
+         agent = user
+         content = text
+      }
+
+   action(channel, user, text) =
+      {
+         type = .action
+         channel = channel
+         agent = user
+         content = text
+      }
+
+   print-result(result) =
+      if result:
+         lodash.flatten-deep({result}) each entry ->
+            m = @augment(entry)
+            print JSON.stringify(m, null, 2)
+
+   process-command(message) =
+      channel = extract-channel(message.channel or "")
+      var cmd = message.command.to-lower-case()
+      fn = commands[cmd] or commands._other
+      result = fn.call(@, message.argument, channel, message)
+      @print-result(result)
+
+   async run() =
+      @print-result with {
+         type = .join
+         agent = @nickname
+      }
+      @instructions each instruction ->
+         @process-command(instruction)
+      while true:
+         message = await @in-stream.next()
+         if not message:
+            return
+         @process-command(message)
+
+
+commands = {
+
+   method say(arg, channel, m) =
+      @message(channel, @nickname, arg)
+
+   method me(arg, channel, m) =
+      @action(channel, @nickname, arg)
+
+   method msg(arg, channel, m) =
+      {agent, *rest} = arg.split(" ")
+      @message(channel, agent, rest.join(" "))
+
+   method join(arg) =
+      {name, *users} = arg.split(" ")
+      @make-chan(name, users)
+
+   method chans(Number! n) =
+      1..n each i -> @make-chan(gen-name(1))
+
+   method people(Number! n, channel) =
+      1..n each i -> @join(channel, gen-name(2))
+
+   method blabble(Number! n, channel) =
+      users = consume(@users[channel])
+      1..n each i ->
+         @message(channel, pick(users), gen-sentence(ri(1, 10)))
+
+   method part(arg, channel) =
+      users = arg.split(" ") each x when x !== "" -> x
+      if users.length === 0:
+         users.push(@nickname)
+      users each u ->
+         @part(channel, u)
+
+}
+
+
+async main() =
+   filename = process.argv[2]
+   instructions =
+      if filename:
+         fs.read-file-sync(filename, .utf8).split("\n") each
+            R"([^/ ]*) */([^ ]+) (.*)"! {_, ch, cmd, arg} ->
+               {command = cmd
+                argument = arg
+                channel = ch}
+            "" ->
+               continue
+      else:
+         {}
+   d = new Generator(process.stdin, instructions)
+   await d.run()
+   process.exit(0)
+
+async: main()
