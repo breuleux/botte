@@ -289,12 +289,12 @@ component Input:
             on-submit(e) =
                e.prevent-default()
                match @state.text:
-                  R"^/([^ ]+) ?(.*)"! {_, cmd, arg} ->
+                  R"^/([^ /]+) ?(.*)"! {_, cmd, arg} ->
                      @props.view.send with {
                         command = cmd
                         argument = arg
                      }
-                  text ->
+                  R"^/?(.*)"! {_, text} ->
                      @props.view.send with {
                         command = .say
                         argument = text
