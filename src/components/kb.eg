@@ -1,6 +1,9 @@
 
 provide:
-   Interactor, keynames
+   Interactor
+   keynames
+   getcode
+   getkey
 
 
 keynames = {
@@ -71,6 +74,20 @@ keynames = {
     122 => "F11"
     123 => "F12"
 }
+
+
+getcode{e} =
+   var code = keynames[e.which] or "<"+e.which+">"
+   if e.shiftKey and code != "S-":
+      code = "S-" + code
+   if e.altKey and code != "A-":
+      code = "A-" + code
+   if [e.ctrlKey or e.metaKey] and code != "C-":
+      code = "C-" + code
+   code
+
+getkey{e} =
+   '[{e.key}]'
 
 
 prevent{event} =
@@ -162,24 +179,11 @@ class Interactor:
                 \ and not @current_bindings._stick]:
                @current_bindings = null
 
-   getcode{e} =
-      var code = keynames[e.which] or "<"+e.which+">"
-      if e.shiftKey and code != "S-":
-         code = "S-" + code
-      if e.altKey and code != "A-":
-         code = "A-" + code
-      if [e.ctrlKey or e.metaKey] and code != "C-":
-         code = "C-" + code
-      code
-
-   getkey{e} =
-      '[{e.key}]'
-
    keyup{e} =
-      @process_codes{{"!^All", "^" + @getcode{e}, "^" + @getkey{e}, "^All"}, e}
+      @process_codes{{"!^All", "^" + getcode{e}, "^" + getkey{e}, "^All"}, e}
 
    keydown{e} =
-      @process_codes{{"!All", @getcode{e}, @getkey{e}, "All"}, e}
+      @process_codes{{"!All", getcode{e}, getkey{e}, "All"}, e}
 
    keypress{e} =
       key = e.which
