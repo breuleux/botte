@@ -291,26 +291,38 @@ class View < EventEmitter:
 
       @general-event-handlers = {
          add-messages(ms) =
-            ;; TODO: error handling
-            @shardset.add-all(ms)
-            ms each m ->
-               {p, n} = @shardset.get-neighbours(m)
-               if p:
-                  @get-message-data(p).next = m
-               if n:
-                  @get-message-data(n).previous = m
-               @get-message-data(m) &: {previous = p, next = n}
-            @emit(.add-messages, ms)
+            try:
+               @shardset.add-all(ms)
+               ms each m ->
+                  {p, n} = @shardset.get-neighbours(m)
+                  if p:
+                     @get-message-data(p).next = m
+                  if n:
+                     @get-message-data(n).previous = m
+                  @get-message-data(m) &: {previous = p, next = n}
+               @emit(.add-messages, ms)
+            catch e:
+               @emit(.add-messages, {em}) where em = {
+                  type = .error
+                  error = e
+                  message = {event = .add-messages}
+               }
          delete-messages(ms) =
-            ;; TODO: error handling
-            ms each m ->
-               {p, n} = @shardset.get-neighbours(m)
-               if p:
-                  @get-message-data(p).next = n
-               if n:
-                  @get-message-data(n).previous = p
-            @shardset.delete-all(ms)
-            @emit(.delete-messages, ms)
+            try:
+               ms each m ->
+                  {p, n} = @shardset.get-neighbours(m)
+                  if p:
+                     @get-message-data(p).next = n
+                  if n:
+                     @get-message-data(n).previous = p
+               @shardset.delete-all(ms)
+               @emit(.delete-messages, ms)
+            catch e:
+               @emit(.add-messages, {em}) where em = {
+                  type = .error
+                  error = e
+                  message = {event = .delete-messages}
+               }
       }
 
       @shardset = Shardset(adapter, 20) where adapter = {
