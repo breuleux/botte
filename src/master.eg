@@ -214,6 +214,10 @@ class Channel < EventEmitter:
    _delete-message(i) =
       @emit(.delete-messages, @messages.splice(i, 1))
 
+   _replace-message(m, i) =
+      {orig-m} = @messages.splice(i, 1, m)
+      @emit(.replace-message, orig-m, m)
+
    add-message(m) =
       {idx, found} = find-insert(@messages, m, compare-messages)
       if not found:
@@ -223,6 +227,11 @@ class Channel < EventEmitter:
       {idx, found} = find-insert(@messages, m, compare-messages)
       if found:
          @_delete-message(idx)
+
+   replace-message(m1, m2) =
+      {idx, found} = find-insert(@messages, m1, compare-messages)
+      if found:
+         @_replace-message(m2, idx)
 
    find-latch(m) =
       ;; This can be used to make slight adjustments to message order
@@ -323,6 +332,21 @@ class View < EventEmitter:
                   error = e
                   message = {event = .delete-messages}
                }
+         replace-message(m1, m2) =
+            try:
+               {p, n} = @shardset.get-neighbours(m1)
+               if p:
+                  @get-message-data(p).next = m2
+               if n:
+                  @get-message-data(n).previous = m2
+               @shardset.replace(m1, m2)
+               @emit(.replace-message, m1, m2)
+            catch e:
+               @emit(.add-messages, {em}) where em = {
+                  type = .error
+                  error = e
+                  message = {event = .replace-message}
+               }
       }
 
       @shardset = Shardset(adapter, 20) where adapter = {
@@ -381,19 +405,23 @@ class View < EventEmitter:
    _unselect() =
       if @selection as message:
          ch = message._pointers.channel
-         ch.delete-message(message)
-         ;; TODO: no mutation
+         ;; ch.delete-message(message)
+         ;; ;; TODO: no mutation
+         ;; @get-message-data(message).selected = false
+         ;; ch.add-message(message)
          @get-message-data(message).selected = false
-         ch.add-message(message)
+         ch.replace-message(message, message)
       @selection = null
 
    select-message(message, mthod) =
       @_unselect()
       if message and message.selectable:
          if message._pointers.channel as ch:
-            ch.delete-message(message)
+            ;; ch.delete-message(message)
+            ;; @get-message-data(message).selected = true
+            ;; ch.add-message(message)
             @get-message-data(message).selected = true
-            ch.add-message(message)
+            ch.replace-message(message, message)
             @selection = message
          if mthod === .click:
             @set-focus(message._pointers.channel)

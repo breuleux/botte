@@ -183,6 +183,8 @@ component ShardComponent:
             messages and new-state.messages = messages.add(m)
          #delete{m} ->
             messages and new-state.messages = messages.delete(m)
+         #replace{m1, m2} ->
+            messages and new-state.messages = messages.replace(m1, m2)
          #focus{name} ->
             if not @props.force-focus:
                new-state.focus = name
@@ -210,6 +212,8 @@ component ShardComponent:
          @do-task(#add{m})
       delete-element(m) =
          @do-task(#delete{m})
+      replace-element(m1, m2) =
+         @do-task(#replace{m1, m2})
    }
 
    render() =

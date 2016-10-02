@@ -93,6 +93,10 @@ class Shardset < EventEmitter:
       @locate(element).delete(element)
       @
 
+   replace(e1, e2) =
+      @locate(e1).replace(e1, e2)
+      @
+
    add-all(elements) =
       elements each element ->
          @add(element)
@@ -149,6 +153,13 @@ class Shard < EventEmitter:
       else:
          @current-min and @current-max = null
       @emit(.delete-element, element)
+      @
+
+   replace(e1, e2) =
+      @elements.replace(e1, e2)
+      @current-min = @adapter.key(@elements._arr[0])
+      @current-max = @adapter.key(@elements._arr[@elements._arr.length - 1])
+      @emit(.replace-element, e1, e2)
       @
 
    split() =

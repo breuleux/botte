@@ -150,6 +150,10 @@ class SortedArray:
                'Element could not be deleted because it could not be found: {element}'
       @
 
+   replace(e1, e2) =
+      @delete(e1)
+      @add(e2)
+
    find-index(element) =
       @_find-index(element)[0]
 
