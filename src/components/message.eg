@@ -44,6 +44,7 @@ component Message:
             font-weight = .bold
          }
          s
+
    show-message(channel, agent, content, extra-class = "") =
       chname = shorten(channel)
       .message %
@@ -56,16 +57,9 @@ component Message:
          .message-source % if{@props.active, @colorize-name(agent), agent}
          .message-content %
             match content:
-               String? -> expand-links(content)
+               String? -> expand-links.call(@, content)
                else -> content
-   status-message(channel, content) =
-      chname = shorten(channel)
-      .message %
-         .message-channel %
-            style = {color = string-to-color(chname)}
-            chname            
-         .message-source % ""
-         .message-content % content
+
    render() =
       r = message-renderers[@props.message.type]
           \ or message-renderers._unhandled
@@ -74,16 +68,14 @@ component Message:
          try:
             r.call(@, @props.message) or (span % "")
          catch e:
-            .message.error %
-               .message-channel % ""
-               .message-source.error % "!RERROR!"
-               .message-content %
-                  div % e.message
-                  div % JSON.stringify(
-                     @props.message & {_pointers = undefined}
-                     true
-                     2
-                  )
+            @show-message("", "!RERROR!", content, .error) where content = {
+               div % e.message
+               div % JSON.stringify(
+                  @props.message & {_pointers = undefined}
+                  true
+                  2
+               )
+            }
       .message-wrapper %
          class-name = if{is-selected, .selected, ""}
          contents
@@ -100,7 +92,7 @@ component Message:
 
 
 component ShardsetComponent:
-   mixins = {ViewEvents, ShardsetEvents, PureRender, DebouncedTasks}
+   mixins = {MasterEvents, ViewEvents, ShardsetEvents, PureRender, DebouncedTasks}
 
    get-initial-state() =
       @at-bottom = true
@@ -118,6 +110,14 @@ component ShardsetComponent:
 
    component-did-update() =
       @update-scroll()
+
+   master-events() = {
+      set-focus(focus) =
+         if focus === @props.view:
+            ;; Seems to work well enough
+            set-timeout(f, 0) where f() =
+               @update-scroll()
+   }
 
    view-events() = {
       scroll(n, unit) =
@@ -147,9 +147,6 @@ component ShardsetComponent:
    }
 
    render() =
-      ;; print {@state.visible
-      ;;        @props.force-focus??.full-name
-      ;;        @props.view.focus??.full-name}
       idx = Math.max(@state.shards.length - 10, 0)
       .messages %
          class-name = if{@state.visible, .visible, .invisible}

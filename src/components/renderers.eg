@@ -91,20 +91,18 @@ message-renderers = Object.assign(Object.create(null)) with {
 
    method topic(m) =
       if m.content:
-         .message.topic %
-            .message-channel % shorten(m.channel)
-            .message-source % ""
-            .channel-topic %
-               .channel-topic-content % expand-links(m.content)
-               .channel-topic-set-by % m.agent
+         @show-message(m.channel, "", ___, .topic) with {
+            .channel-topic-content % expand-links(m.content)
+            .channel-topic-set-by % m.agent
+         }
 
    method add-mode(m) =
       ag = m.agent or get-network(m.channel) or "??"
-      @status-message(m.channel, '{ag} sets mode +{m.mode} {m.argument or ""}')
+      @show-message(m.channel, "", '{ag} sets mode +{m.mode} {m.argument or ""}')
 
    method remove-mode(m) =
       ag = m.agent or get-network(m.channel) or "??"
-      @status-message(m.channel, '{ag} sets mode -{m.mode} {m.argument or ""}')
+      @show-message(m.channel, "", '{ag} sets mode -{m.mode} {m.argument or ""}')
 
    method names(m) =
       null
@@ -115,20 +113,19 @@ message-renderers = Object.assign(Object.create(null)) with {
    method motd(m) =
       @show-message(m.channel, m.agent or "", m.content, .motd)
 
+   method unknown-command(m) =
+      @show-message(m.channel, "!ERROR!",
+                    \ 'Unknown command: /{m.command}', 'unknown-command')
+
    method error(m) =
       print m.error
-      .message.unhandled %
-         .message-channel % shorten(m.channel)
-         .message-source.unhandled % "!ERROR!"
-         .message-content %
-            div % m.error.message
-            div % stringify-message(m.message)
+      @show-message(m.channel, "!ERROR!", content, .error) where content = {
+         div % m.error.message
+         div % stringify-message(m.message)
+      }
 
    method _unhandled(m) =
-      .message.unhandled %
-         .message-channel % shorten(m.channel)
-         .message-source.unhandled % "!UNHANDLED!"
-         .message-content % stringify-message(m)
+      @show-message(m.channel, "!UNHANDLED!", stringify-message(m), .unhandled)
 }
 
 stringify-message(m) =
