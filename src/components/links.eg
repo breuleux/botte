@@ -7,6 +7,7 @@ require:
    open-graph as og
    ..format -> output-formatters
    escape-html
+   lodash
 
 require-macros:
    earl-react ->
@@ -48,18 +49,80 @@ ExpanderComponent = {
             @render-opened()
 }
 
+
+component InteractiveImage:
+   get-initial-state() =
+      @_mouse-move-handler = lodash.debounce(@mouse-move-handler, 10, {max-wait = 100})
+      {
+         resizing = false
+         orig = {=}
+         height = 0
+         width = 0
+      }
+
+   mouse-move-handler(e) =
+      if @state.resizing:
+         rect = e.target.get-bounding-client-rect()
+         o = @state.orig
+         x = e.client-x - rect.left
+         y = e.client-y - rect.top
+         scale = Math.max(y / o.y, x / o.x)
+         @set-state with {
+            height = o.h * scale
+            width = o.w * scale
+         }
+
+   render() =
+      div %
+         style = {
+            display = .block
+            min-height = @state.orig.h or .auto
+            height = @state.height or .auto
+            width = @state.width or .auto
+         }
+         img %
+            ;; ref(elem) =
+            ;;    @_elem = elem
+            on-load(e) =
+               @props.view??.emit(.scroll-change)
+               {height => h, width => w} = e.target
+               scale = Math.min(1, 500/h, 800/w)
+               @set-state with {
+                  height = h * scale
+                  width = w * scale
+               }
+            on-mouse-down(e) =
+               rect = e.target.get-bounding-client-rect()
+               @set-state with {
+                  resizing = true
+                  orig = {
+                     x = e.client-x - rect.left
+                     y = e.client-y - rect.top
+                     h = @state.height
+                     w = @state.width
+                  }
+               }
+            on-mouse-up(e) =
+               @set-state with {resizing = false, orig = {=}}
+            on-mouse-out(e) =
+               @set-state with {resizing = false, orig = {=}}
+            on-mouse-move = @mouse-move-handler
+            draggable = false
+            style = {
+               display = .block
+               height = @state.height or .auto
+               width = @state.width or .auto
+               ;; max-height = 500
+               ;; max-width = 800
+            }
+            src = @props.src
+
 component ImageExpander:
    mixins = {ExpanderComponent, PureRender}
    closed-icon = "base/camera"
    render-opened() =
-      img %
-         on-load(e) =
-            @props.view??.emit(.scroll-change)
-         style = {
-            display = .block
-            max-height = 500
-            max-width = 800
-         }
+      InteractiveImage %
+         view = @props.view
          src = @props.href
 
 component YoutubeExpander:
