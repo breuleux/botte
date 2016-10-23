@@ -457,7 +457,7 @@ async main() =
 
    if settings.join-groups:
       connections = {=}
-      items(settings.client.groups) each {name, channels} ->
+      items(settings.client.groups) each {name, {=> channels}} ->
          channels each channel ->
             ch = extract-channel(channel)
             nw = extract-network(channel)
