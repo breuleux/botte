@@ -92,7 +92,7 @@ message-renderers = Object.assign(Object.create(null)) with {
    method topic(m) =
       if m.content:
          @show-message(m.channel, "", ___, .topic) with {
-            .channel-topic-content % expand-links(m.content)
+            .channel-topic-content % expand-links.call(@, m.content)
             .channel-topic-set-by % m.agent
          }
 
