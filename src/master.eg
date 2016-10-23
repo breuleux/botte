@@ -304,11 +304,8 @@ class View < EventEmitter:
                @shardset.add-all(ms)
                ms each m ->
                   {p, n} = @shardset.get-neighbours(m)
-                  if p:
-                     @get-message-data(p).next = m
-                  if n:
-                     @get-message-data(n).previous = m
-                  @get-message-data(m) &: {previous = p, next = n}
+                  @link-messages(p, m)
+                  @link-messages(m, n)
                @emit(.add-messages, ms)
             catch e:
                @emit(.add-messages, {em}) where em = {
@@ -320,10 +317,7 @@ class View < EventEmitter:
             try:
                ms each m ->
                   {p, n} = @shardset.get-neighbours(m)
-                  if p:
-                     @get-message-data(p).next = n
-                  if n:
-                     @get-message-data(n).previous = p
+                  @link-messages(p, n)
                @shardset.delete-all(ms)
                @emit(.delete-messages, ms)
             catch e:
@@ -335,10 +329,8 @@ class View < EventEmitter:
          replace-message(m1, m2) =
             try:
                {p, n} = @shardset.get-neighbours(m1)
-               if p:
-                  @get-message-data(p).next = m2
-               if n:
-                  @get-message-data(n).previous = m2
+               @link-messages(p, m2)
+               @link-messages(m2, n)
                @shardset.replace(m1, m2)
                @emit(.replace-message, m1, m2)
             catch e:
@@ -358,6 +350,17 @@ class View < EventEmitter:
             m.start-time
          compare = compare-messages
       }
+
+   link-messages(m1, m2) =
+      if m1:
+         @get-message-data(m1) &: {
+            next = m2
+         }
+      if m2:
+         @get-message-data(m2) &: {
+            previous = m1
+         }
+
 
    set-label(new-label) =
       @emit(.set-label, @label, new-label)
