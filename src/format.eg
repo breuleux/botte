@@ -1,27 +1,73 @@
 
+require: /html
+
 provide:
    output-formatters
 
 
 output-formatters = {
-   irc(s) =
-      chain s:
-         @replace(R.g"\x030*([0-9]+)(?:,0*([0-9]+))?([^\x03]*)(?=\x03|\x0f|$)") with
-            {_, fg, bg, txt} ->
-               '<span class="ircfg-{fg} ircbg-{bg or "x"}">{txt}</span>'
-         @replace(R.g"\x02([^\x02]*)(?:\x02|\x0f|$)") with
-            {_, txt} ->
-               '<span class="ircb">{txt}</span>'
-         @replace(R.g"\x16([^\x1d]*)(?:\x16|\x0f|$)") with
-            {_, txt} ->
-               '<span class="ircr">{txt}</span>'
-         @replace(R.g"\x1d([^\x1d]*)(?:\x1d|\x0f|$)") with
-            {_, txt} ->
-               '<span class="irci">{txt}</span>'
-         @replace(R.g"\x1f([^\x1f]*)(?:\x1f|\x0f|$)") with
-            {_, txt} ->
-               '<span class="ircu">{txt}</span>'
+   ;; irc(s) =
+   ;;    chain s:
+   ;;       @replace(R.g"\x030*([0-9]+)(?:,0*([0-9]+))?([^\x03]*)(?=\x03|\x0f|$)") with
+   ;;          {_, fg, bg, txt} ->
+   ;;             '<span class="ircfg-{fg} ircbg-{bg or "x"}">{txt}</span>'
+   ;;       @replace(R.g"\x02([^\x02\x0f]*)(?:\x02|\x0f|$)") with
+   ;;          {_, txt} ->
+   ;;             '<span class="ircb">{txt}</span>'
+   ;;       @replace(R.g"\x16([^\x1d\x0f]*)(?:\x16|\x0f|$)") with
+   ;;          {_, txt} ->
+   ;;             '<span class="ircr">{txt}</span>'
+   ;;       @replace(R.g"\x1d([^\x1d\x0f]*)(?:\x1d|\x0f|$)") with
+   ;;          {_, txt} ->
+   ;;             '<span class="irci">{txt}</span>'
+   ;;       @replace(R.g"\x1f([^\x1f\x0f]*)(?:\x1f|\x0f|$)") with
+   ;;          {_, txt} ->
+   ;;             '<span class="ircu">{txt}</span>'
+   irc(s, h) =
+      rval = {}
+      var bold = false
+      var italic = false
+      var underline = false
+      var reverse = false
+      var fg = false
+      var bg = false
+      s.split(R"(\x030*[0-9]+(?:,0*[0-9]+)?|[\x02\x03\x0f\x16\x1d\x1f])") each
+         "\x02" ->
+            bold = not bold
+         "\x03" ->
+            fg and bg = false
+         R"\x03([^,]*),(.*)"! {_, _fg, _bg} ->
+            fg = _fg
+            bg = _bg
+         R"\x03(.*)"! {_, _fg} ->
+            fg = _fg
+            bg = false
+         "\x0f" ->
+            bold and italic and underline and reverse and fg and bg = false
+         "\x16" ->
+            reverse = not reverse
+         "\x1d" ->
+            italic = not italic
+         "\x1f" ->
+            underline = not underline
+         text ->
+            if text === '':
+               continue
+            classes = {}
+            if bold: classes.push(.ircb)
+            if italic: classes.push(.irci)
+            if underline: classes.push(.ircu)
+            if reverse: classes.push(.ircr)
+            if fg !== false: classes.push('ircfg-{fg or "x"}')
+            if bg !== false: classes.push('ircbg-{bg or "x"}')
+            rval.push with
+               if classes.length > 0:
+                  then: h(.span, {className = classes.join(" ")}, text)
+                  else: text
+      rval
 }
 
-;; print output-formatters.irc("Hey \x034,3hello\x035,6there")
-;; print output-formatters.irc("Hey \x02\x1fhello\x02\x1f there \x02genius\x02")
+
+;; print html with output-formatters.irc("Hey \x034,3hello\x035,6there")
+;; print html with output-formatters.irc("Hey \x02\x1fhello\x02\x1f there \x02genius\x02")
+;; print html with output-formatters.irc("Hey \x02\x1fhello\x1f there")

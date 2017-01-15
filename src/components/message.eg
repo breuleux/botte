@@ -36,7 +36,10 @@ MessageArray(messages) =
    s = SortedArray(compare-messages)
    s.populate(messages)
 
-component Message:
+
+component MessagePart:
+   mixins = {PureRender}
+
    colorize-name(s) =
       span %
          style = {
@@ -76,9 +79,56 @@ component Message:
                   2
                )
             }
+      contents
+
+
+component Message:
+
+   colorize-name(s) =
+      span %
+         style = {
+            color = string-to-color(s, 100, 50)
+            font-weight = .bold
+         }
+         s
+
+   show-message(channel, agent, content, extra-class = "") =
+      chname = shorten(channel)
+      .message %
+         class-name = extra-class
+         on-click(e) =
+            @props.view.select-message(@props.message, .click)
+         .message-channel %
+            style = {color = string-to-color(chname)}
+            chname            
+         .message-source % if{@props.active, @colorize-name(agent), agent}
+         .message-content %
+            match content:
+               String? -> content ;;expand-links.call(@, content)
+               else -> content
+
+   render() =
+      r = message-renderers[@props.message.type]
+          \ or message-renderers._unhandled
+      is-selected = @props.view.get-message-data(@props.message).selected
+      ;; contents =
+      ;;    try:
+      ;;       r.call(@, @props.message) or (span % "")
+      ;;    catch e:
+      ;;       @show-message("", "!RERROR!", content, .error) where content = {
+      ;;          div % e.message
+      ;;          div % JSON.stringify(
+      ;;             @props.message & {_pointers = undefined}
+      ;;             true
+      ;;             2
+      ;;          )
+      ;;       }
       .message-wrapper %
          class-name = if{is-selected, .selected, ""}
-         contents
+         MessagePart %
+            view = @props.view
+            active = @props.active
+            message = @props.message
          if is-selected:
             then:
                ;; .message.message-toolbar %

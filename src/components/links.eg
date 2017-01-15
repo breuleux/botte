@@ -1,5 +1,6 @@
 
 require:
+   react -> create-element
    react-dom as ReactDOM
    react-youtube-player as YoutubePlayer
    react-addons-pure-render-mixin as PureRender
@@ -8,6 +9,7 @@ require:
    ..format -> output-formatters
    escape-html
    lodash
+   hyper-replace
 
 require-macros:
    earl-react ->
@@ -211,22 +213,41 @@ component OpenGraphExpander:
 
 
 method expand-links(text) =
-   splits = text.split(R"(https?://[^ \n\t\[\]{}()\xa0]+)")
-   enumerate(splits) each {match i, split} ->
-      when i mod 2 == 1 ->
+   ;; TODO: optimize?
+
+   r = hyper-replace(text) with {
+      pattern = R"https?://[^ \n\t\[\]{}()\xa0]+"
+      replacement(url) =
          var rval = "???"
          expanders each e ->
-            match split:
+            match url:
                e.regexp! args ->
-                  rval = e.create.apply(@, {split} ++ args[1..])
+                  rval = e.create.apply(@, {url} ++ args[1..])
                   break
                else ->
                   pass
-         rval
-      else ->
-         markup = output-formatters.irc(escape-html(split))
-         span %
-            dangerouslySetInnerHTML = {__html = markup}
+         rval         
+   }
+   r each
+      String? s ->
+         output-formatters.irc(s, create-element)
+      other ->
+         other
+
+   ;; splits = text.split(R"(https?://[^ \n\t\[\]{}()\xa0]+)")
+   ;; enumerate(splits) each {match i, split} ->
+   ;;    when i mod 2 == 1 ->
+   ;;       var rval = "???"
+   ;;       expanders each e ->
+   ;;          match split:
+   ;;             e.regexp! args ->
+   ;;                rval = e.create.apply(@, {split} ++ args[1..])
+   ;;                break
+   ;;             else ->
+   ;;                pass
+   ;;       rval
+   ;;    else ->
+   ;;       output-formatters.irc(split, create-element)
 
 
 expanders = {
