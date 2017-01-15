@@ -23,8 +23,12 @@ provide:
 component User:
    render() =
       l = compute-level(@props.data.modes)
-      span.user-name %
+      div.user-name %
          class-name = 'user-level-{l}'
+         on-double-click() =
+            message = {command = .open
+                       argument = @props.data.nickname}
+            @props.view.send(message)
          @props.data.nickname
 
 
@@ -111,8 +115,11 @@ component ChannelUsers:
                   @props.channel.short-name
          .channel-users %
             @state.users each data ->
-               l = compute-level(data.modes)
-               span.user-name %
-                  class-name = 'user-level-{l}'
-                  data.nickname
+               User %
+                  data = data
+                  view = @props.view
+               ;; l = compute-level(data.modes)
+               ;; span.user-name %
+               ;;    class-name = 'user-level-{l}'
+               ;;    data.nickname
 
