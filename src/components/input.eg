@@ -7,7 +7,7 @@ require:
       ViewEvents
    ..utilities ->
       shorten
-   ..kb ->
+   .kb ->
       Interactor
    ..log ->
       Logger
